@@ -26,10 +26,9 @@ while True:
             # 获取文件信息
             info = connection.recv(128)
             file_info = json.loads(info.decode('utf-8'))
-            file_name, file_size = file_info[name], file_info[size]
-            print('File: {0}('.format(file_name) + datatrans.display_file_length(int(file_size)) + ')')
+            print('File: {0}('.format(file_info['name']) + datatrans.display_file_length(file_info['size']) + ')')
             # 开始传输数据
-            proc = Process(target = datatrans.save_data, args = (connection, adr, file_name, int(file_size)))
+            proc = Process(target = datatrans.save_data, args = (connection, adr, file_info['name'], file_info['size']))
             proc.start()
         else:
             raise ConnectionFailed(addr, port)

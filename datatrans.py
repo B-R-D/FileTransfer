@@ -1,4 +1,4 @@
-import time, os, json
+import time, os
 
 # 文件显示模式：双端
 def display_file_length(file_size):
@@ -10,20 +10,6 @@ def display_file_length(file_size):
         return '{0:.1f}MB'.format(file_size/1048576)
     else:
         return '{0:.1f}GB'.format(file_size/1073741824)
-
-# 组合文件头信息：客户端
-def file_info(file_name):
-    file_size = os.path.getsize(file_name)
-    # 文件分片大小，以后可以自己设定
-    if file_size <= 5242880:
-        part = 1
-    elif 5242880 < file_size <= 20971520:
-        part = 2
-    elif 104857600 < file_size <= 20971520:
-        part = 4
-    elif file_size > 104857600:
-        part = 8
-    return {'name': file_name, 'size': file_size, 'part': part}
 
 # 读取文件并发送数据：客户端
 def send_data(sock, adr, file_name):
