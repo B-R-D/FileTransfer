@@ -3,7 +3,7 @@
 当建立连接后发送指定数据。
 '''
 
-import socket, time, os, json
+import socket, time, os, json, asyncio
 # 导入第三方库
 import datatrans, exceptions
 
@@ -22,8 +22,8 @@ while True:
         d = ''
 
 # 组合并发送文件头信息
-file_name = 'test'
-file_size = os.path.getsize(file_name)
+file_name = ['test1', 'test2']
+file_size = os.path.getsize('test1')
 # 文件分片大小，以后可以自己设定
 part = 8
 file_data = {'name': file_name, 'size': file_size, 'part': part}
@@ -32,5 +32,8 @@ soc.send(json.dumps(file_data).encode('utf-8'))
 time.sleep(3)
 print('Transfer starting...')
 # 开始数据传输
-datatrans.send_data(soc, addr, file_name)
+loop = asyncio.get_event_loop()
+tasks = [datatrans.send_data(soc, addr, x) for x in file_name]
+loop.run_until_complete(asyncio.wait(tasks))
+loop.close()
 soc.close()

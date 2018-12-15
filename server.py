@@ -3,7 +3,7 @@
 有连接呼入时接收文件并保存。
 '''
 
-import socket, time, json
+import socket, time, json, asyncio
 from multiprocessing import Process
 # 导入第三方库
 import datatrans, exceptions
@@ -28,8 +28,12 @@ while True:
             file_info = json.loads(info.decode('utf-8'))
             print('File: {0}('.format(file_info['name']) + datatrans.display_file_length(file_info['size']) + ')')
             # 开始传输数据
-            proc = Process(target = datatrans.save_data, args = (connection, adr, file_info['name'], file_info['size']))
-            proc.start()
+            loop = asyncio.get_event_loop()
+            tasks = [datatrans.save_data(connection, adr, x, 888) for x in file_info['name']]
+            loop.run_until_complete(asyncio.wait(tasks))
+            loop.close()
+            #proc = Process(target = datatrans.save_data, args = (connection, adr, file_info['name'], file_info['size']))
+            #proc.start()
         else:
             raise ConnectionFailed(addr, port)
     except ConnectionFailed:
