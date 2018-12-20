@@ -3,37 +3,41 @@
 当建立连接后发送指定数据。
 '''
 
-import socket, time, os, json, asyncio
-# 导入第三方库
-import datatrans, exceptions
+import os, json, asyncio, hashlib
+file = ['test1', 'test2']
+part = 40
 
-addr = '192.168.1.9'
-soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# 建立连接
-soc.connect((addr, 12345))
-soc.send(b'Established file transmission control, stand by...')
-# 等待消息循环
-while True:	
-    d = soc.recv(46)
-    if d.decode('utf-8') == 'Connection confirmed.':
-        break
-    elif d:
-        print(d.decode('utf-8'))
-        d = ''
+# 生成数据头和各数据分组
+def file_spliter(file_name, p):
+    file_size = os.path.getsize(file_name)
+    # 3M以下文件不分块
+    if file_size <= 3145728:
+        p = 1
+    md5 = hashlib.md5()
+    with open(file_name, 'rb') as f:
+        md5.update(f.read())
+        file_md5 = md5.hexdigest()
+        f.seek(0)
+        data = [f.read(file_size // p + 1) for i in range(p)]
+    # 为每个part加上头信息
+    for i in range(len(data)):
+        part_info = {'name': file_name, 'size': file_size, 'md5': file_md5, 'part': i, 'all': p}
+        data[i] = json.dumps(part_info).encode() + b'---+++header+++---' + data[i]
+    return data
 
-# 组合并发送文件头信息
-file_name = ['test1', 'test2']
-file_size = os.path.getsize('test1')
-# 文件分片大小，以后可以自己设定
-part = 8
-file_data = {'name': file_name, 'size': file_size, 'part': part}
-print('File: {0}('.format(file_data['name']) + datatrans.display_file_length(file_data['size']) + ') transmission will begin within 3 seconds.')
-soc.send(json.dumps(file_data).encode('utf-8'))
-time.sleep(3)
-print('Transfer starting...')
-# 开始数据传输
+# 代替socket建立连接
+async def send_data(data):
+    reader, writer = await asyncio.open_connection('192.168.1.9', 12345)
+    writer.write(data)
+    await writer.drain()
+    info = json.loads(data.split(b'---+++header+++---')[0])
+    print('Sending file:{0} (Part {1}/{2})... Done.'.format(info['name'], info['part'], part), end='\r')
+
 loop = asyncio.get_event_loop()
-tasks = [datatrans.send_data(soc, addr, x) for x in file_name]
+tasks = []
+for f in file:
+    data = file_spliter(f, part)
+    for d in data:
+        tasks.append(send_data(d))
 loop.run_until_complete(asyncio.wait(tasks))
 loop.close()
-soc.close()
