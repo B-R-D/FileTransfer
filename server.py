@@ -3,40 +3,83 @@
 有连接呼入时接收文件并保存。
 '''
 
-import socket, time, json, asyncio
-from multiprocessing import Process
-# 导入第三方库
-import datatrans, exceptions
-from exceptions import *
+import os, re, json, asyncio, hashlib
+# 全局状态
+status = {}
 
-addr = '0.0.0.0'
-soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-soc.bind((addr, 12345))
-soc.listen(3)
+def display_file_length(file_size):
+    if file_size < 1:
+        return '{0:.1f}B'.format(file_size)
+    elif 1 <= file_size < 1048576:
+        return '{0:.1f}kB'.format(file_size/1024)
+    elif 1048576 <= file_size < 1073741824:
+        return '{0:.1f}MB'.format(file_size/1048576)
+    else:
+        return '{0:.1f}GB'.format(file_size/1073741824)
+
+async def trans_data(reader, writer):
+    data = b''
+    chunk = b'empty'
+    while chunk:
+        chunk = await reader.read(1450)
+        data += chunk
+    info = json.loads(data.split(b'---+++header+++---')[0])
+    with open(info['name'] + '.part' + str(info['part']), 'wb') as transchunk:
+        transchunk.write(data.split(b'---+++header+++---')[1])
+    if info['name'] not in status:
+        status[info['name']] = []
+    status[info['name']].append(info['part'])
+    print('{0}(part {1}/{2}) complete.'.format(info['name'], len(status[info['name']]), info['all']), end='\r')
+    return info
+
+async def create_file(info):
+    print('\nCreating file...', end='')
+    # 当所有块都完成时拼装
+    temp_file, p = b'', 0
+    while p < info['all']:
+        if os.access(info['name'] + '.part' + str(p), os.R_OK):
+            with open(info['name'] + '.part' + str(p), 'rb') as chunk:
+                temp_file += chunk.read()
+            p += 1
+    with open(info['name'], 'wb') as last_file:
+        last_file.write(temp_file)
+    print('Complete.')
+    return temp_file
+
+async def check_md5(md5_info, data):
+    print('Checking MD5...', end='')
+    # 对比MD5值
+    md5 = hashlib.md5()
+    md5.update(data)
+    if md5.hexdigest() == md5_info:
+        print('Passed.')
+    else:
+        # 以后改为抛出异常
+        print('Failed.')
+
+async def receive_data(reader, writer):
+    info = await trans_data(reader, writer)
+    if info['all'] == len(status[info['name']]):
+        temp_file = await create_file(info)
+        await check_md5(info['md5'], temp_file)
+        # 拼装完成后从状态字典中删除该key和part文件，以便传送同名文件
+        status.pop(info['name'])
+        for f in os.listdir(os.path.abspath('.')):
+            regex = re.match('(' + info['name'] + '.part\d{1,3})', f)
+            if regex:
+                os.remove(regex.group(0))
+        print('File: {0}({1}) transmission complete.'.format(info['name'], display_file_length(info['size'])))
+
+loop = asyncio.get_event_loop()
+coro = asyncio.start_server(receive_data, '0.0.0.0', 12345)
 print('Waiting for incoming tranmission...')
-
-# 先确保建立连接
-while True:
-    try:
-        connection, adr = soc.accept()
-        msg = connection.recv(50)
-        if msg.decode('utf-8') == 'Established file transmission control, stand by...':
-            print('Incoming transmission from {0}:{1}.'.format(adr[0], adr[1]))
-            connection.send(b'Connection confirmed.')
-            # 获取文件信息
-            info = connection.recv(128)
-            file_info = json.loads(info.decode('utf-8'))
-            print('File: {0}('.format(file_info['name']) + datatrans.display_file_length(file_info['size']) + ')')
-            # 开始传输数据
-            loop = asyncio.get_event_loop()
-            tasks = [datatrans.save_data(connection, adr, x, 888) for x in file_info['name']]
-            loop.run_until_complete(asyncio.wait(tasks))
-            loop.close()
-            #proc = Process(target = datatrans.save_data, args = (connection, adr, file_info['name'], file_info['size']))
-            #proc.start()
-        else:
-            raise ConnectionFailed(addr, port)
-    except ConnectionFailed:
-        print('Connection from {0}:{1} failed.'.format(adr[0], adr[1]))
-	
-
+server = loop.run_until_complete(coro)
+# 键盘中断时关闭服务器
+try:
+    loop.run_forever()
+except KeyboardInterrupt:
+    pass
+print('Shutting down...')
+server.close()
+loop.run_until_complete(server.wait_closed())
+loop.close()
