@@ -65,9 +65,9 @@ async def receive_data(reader, writer):
         # 拼装完成后从状态字典中删除该key和part文件，以便传送同名文件
         status.pop(info['name'])
         for f in os.listdir(os.path.abspath('.')):
-            regex = re.match('(' + info['name'] + '.part\d{1,3})', f)
-            if regex:
-                os.remove(regex.group(0))
+            # regex = re.match('(' + info['name'] + '.part\d{1,3})', f)
+            if f[:len(info['name']) + 5] == info['name'] + '.part':
+                os.remove(f)
         print('File: {0}({1}) transmission complete.'.format(info['name'], display_file_length(info['size'])))
 
 loop = asyncio.get_event_loop()
