@@ -4,10 +4,11 @@
 '''
 import os, time, json, asyncio, hashlib
 
-file=['ro@ygameavirli.aclocme Ⅳ.7z']
+file=['filename']
 part = 0
 # 网速M/s
 net = 5
+ip = 192.168.1.9
 
 
 # 声明一个管理类管理所传送文件的信息
@@ -54,7 +55,7 @@ def file_spliter(file_name, p):
 
 # 建立连接
 async def send_data(data):
-    reader, writer = await asyncio.open_connection('127.0.0.1', 12345)
+    reader, writer = await asyncio.open_connection(ip, 12345)
     writer.write(data)
     await writer.drain()
     info = json.loads(data.split(b'---+++header+++---')[0])
@@ -70,7 +71,6 @@ def file_transfer_client():
         for d in data:
             tasks.append(send_data(d))
             counter -= 1
-            print('Tasks:', len(tasks), 'Counter:', counter)
             if len(tasks) % 10 == 0 or counter == 0:
                 loop.run_until_complete(asyncio.wait(tasks))
                 time.sleep(status.get_sleep_time())
