@@ -2,9 +2,37 @@
 客户端，尝试连接服务端。
 当建立连接后发送指定数据。
 '''
-file=['[TANA] 出コレクション [4K掃圖組].7z']
-import os, json, asyncio, hashlib
-part = 70
+import os, time, json, asyncio, hashlib
+
+file=['ro@ygameavirli.aclocme Ⅳ.7z']
+part = 0
+# 网速M/s
+net = 5
+
+
+# 声明一个管理类管理所传送文件的信息
+class Status:
+    def __init__(self, part, name):
+        self.part = part
+        # 传入文件绝对路径
+        self.name = name
+        
+        self._size = os.path.getsize(name)
+        # 相邻两块组之间间隔时间，10块为一组
+        self._sleep_time = 0
+        # 当part设置为0时采用自动确定块数策略
+        if self.part == 0:
+            # 单块不超过3M
+            self.part = round(self._size / 1048576 / 3)
+            if self.part > 20:
+                self._sleep_time = 30 // net
+        else:
+            # 手动设置块数策略后期增加
+            pass
+    def get_part(self):
+        return self.part
+    def get_sleep_time(self):
+        return self._sleep_time
 
 # 生成数据头和各数据分组
 def file_spliter(file_name, p):
@@ -24,22 +52,29 @@ def file_spliter(file_name, p):
         data[i] = json.dumps(part_info).encode() + b'---+++header+++---' + data[i]
     return data
 
-# 代替socket建立连接
+# 建立连接
 async def send_data(data):
-    reader, writer = await asyncio.open_connection('192.168.1.9', 12345)
+    reader, writer = await asyncio.open_connection('127.0.0.1', 12345)
     writer.write(data)
     await writer.drain()
     info = json.loads(data.split(b'---+++header+++---')[0])
-    print('Sending file:{0} (Part {1}/{2})... Done.'.format(info['name'], info['part'], part), end='\n')
+    print('Sending file:{0} (Part {1}/{2})... Done.'.format(info['name'], info['part'], info['all']), end='\n')
 
 def file_transfer_client():
     loop = asyncio.get_event_loop()
     tasks = []
     for f in file:
-        data = file_spliter(f, part)
+        status = Status(part, f)
+        data = file_spliter(f, status.get_part())
+        counter = len(data)
         for d in data:
             tasks.append(send_data(d))
-    loop.run_until_complete(asyncio.wait(tasks))
+            counter -= 1
+            print('Tasks:', len(tasks), 'Counter:', counter)
+            if len(tasks) % 10 == 0 or counter == 0:
+                loop.run_until_complete(asyncio.wait(tasks))
+                time.sleep(status.get_sleep_time())
+                tasks = []
     loop.close()
     
 file_transfer_client()
