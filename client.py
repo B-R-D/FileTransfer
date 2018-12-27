@@ -4,11 +4,11 @@
 '''
 import os, time, json, asyncio, hashlib
 
-file=['filename']
+file=['夏空のペルセウス OP.avi']
 part = 0
 # 网速M/s
 net = 5
-ip = 192.168.1.9
+ip = '192.168.1.9'
 
 
 # 声明一个管理类管理所传送文件的信息
@@ -62,7 +62,6 @@ async def send_data(data):
     print('Sending file:{0} (Part {1}/{2})... Done.'.format(info['name'], info['part'], info['all']), end='\n')
 
 def file_transfer_client():
-    loop = asyncio.get_event_loop()
     tasks = []
     for f in file:
         status = Status(part, f)
@@ -72,9 +71,11 @@ def file_transfer_client():
             tasks.append(send_data(d))
             counter -= 1
             if len(tasks) % 10 == 0 or counter == 0:
+                loop = asyncio.new_event_loop()
                 loop.run_until_complete(asyncio.wait(tasks))
                 time.sleep(status.get_sleep_time())
+                loop.close()
                 tasks = []
-    loop.close()
+
     
 file_transfer_client()
