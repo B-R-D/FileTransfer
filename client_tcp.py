@@ -4,12 +4,11 @@
 '''
 import os, time, json, asyncio, hashlib
 
-file=['夏空のペルセウス OP.avi']
+file = os.listdir('send')
 part = 0
 # 网速M/s
-net = 5
+net = 4
 ip = '192.168.1.9'
-
 
 # 声明一个管理类管理所传送文件的信息
 class Status:
@@ -17,16 +16,16 @@ class Status:
         self.part = part
         # 传入文件绝对路径
         self.name = name
-        
         self._size = os.path.getsize(name)
         # 相邻两块组之间间隔时间，10块为一组
         self._sleep_time = 0
         # 当part设置为0时采用自动确定块数策略
         if self.part == 0:
-            # 单块不超过3M
-            self.part = round(self._size / 1048576 / 3)
-            if self.part > 20:
-                self._sleep_time = 30 // net
+            # 单块不超过每秒网速
+            self.part = round(self._size / 1048576 / net)
+            # 大于10块时间隔时间就是块数
+            if self.part > 10:
+                self._sleep_time = 5
         else:
             # 手动设置块数策略后期增加
             pass
@@ -38,8 +37,8 @@ class Status:
 # 生成数据头和各数据分组
 def file_spliter(file_name, p):
     file_size = os.path.getsize(file_name)
-    # 3M以下文件不分块
-    if file_size <= 3145728:
+    # 5M以下文件不分块
+    if file_size <= 5242880:
         p = 1
     md5 = hashlib.md5()
     with open(file_name, 'rb') as f:
@@ -55,11 +54,11 @@ def file_spliter(file_name, p):
 
 # 建立连接
 async def send_data(data):
+    info = json.loads(data.split(b'---+++header+++---')[0])
+    print('Sending file:{0} (Part {1}/{2})...'.format(info['name'], info['part'], info['all']), end='')
     reader, writer = await asyncio.open_connection(ip, 12345)
     writer.write(data)
     await writer.drain()
-    info = json.loads(data.split(b'---+++header+++---')[0])
-    print('Sending file:{0} (Part {1}/{2})... Done.'.format(info['name'], info['part'], info['all']), end='\n')
 
 def file_transfer_client():
     tasks = []
@@ -70,12 +69,11 @@ def file_transfer_client():
         for d in data:
             tasks.append(send_data(d))
             counter -= 1
-            if len(tasks) % 10 == 0 or counter == 0:
+            if len(tasks) % 5 == 0 or counter == 0:
                 loop = asyncio.new_event_loop()
                 loop.run_until_complete(asyncio.wait(tasks))
                 time.sleep(status.get_sleep_time())
                 loop.close()
                 tasks = []
 
-    
 file_transfer_client()
