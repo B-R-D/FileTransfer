@@ -8,9 +8,9 @@ import os, re, json, asyncio, hashlib
 status = {}
 
 def display_file_length(file_size):
-    if file_size < 1:
+    if file_size < 1024:
         return '{0:.1f}B'.format(file_size)
-    elif 1 <= file_size < 1048576:
+    elif 1024 <= file_size < 1048576:
         return '{0:.1f}kB'.format(file_size/1024)
     elif 1048576 <= file_size < 1073741824:
         return '{0:.1f}MB'.format(file_size/1048576)
@@ -21,8 +21,11 @@ async def trans_data(reader, writer):
     data = b''
     chunk = b'empty'
     while chunk:
+        #print(chunk, '\n', data)
         chunk = await reader.read(1450)
         data += chunk
+    # 接收完一块后发送已接受信号
+    #writer.write(b'---+++received+++---')
     info = json.loads(data.split(b'---+++header+++---')[0])
     with open(info['name'] + '.part' + str(info['part']), 'wb') as transchunk:
         transchunk.write(data.split(b'---+++header+++---')[1])
@@ -68,7 +71,7 @@ async def receive_data(reader, writer):
             # regex = re.match('(' + info['name'] + '.part\d{1,3})', f)
             if f[:len(info['name']) + 5] == info['name'] + '.part':
                 os.remove(f)
-        print('File: {0}({1}) transmission complete.'.format(info['name'], display_file_length(info['size'])))
+        print('File: {0}({1}) transmission complete.\n'.format(info['name'], display_file_length(info['size'])))
 
 loop = asyncio.get_event_loop()
 coro = asyncio.start_server(receive_data, '0.0.0.0', 12345)
@@ -79,7 +82,7 @@ try:
     loop.run_forever()
 except KeyboardInterrupt:
     pass
-print('Shutting down...')
+print('\nShutting down...')
 server.close()
 loop.run_until_complete(server.wait_closed())
 loop.close()
