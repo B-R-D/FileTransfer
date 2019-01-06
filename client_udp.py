@@ -3,27 +3,26 @@ UDP客户端，尝试连接服务端。
 当建立连接后发送指定数据。
 解决1：多文件发送；
 问题2：发送时可直接放入send中；
-问题3：超时则自动断开连接；
+问题3：超时则自动重发；
 '''
 
-import os, time, json, asyncio, hashlib
+import os, json, asyncio, hashlib
 
 file = os.listdir('send')
+# 同时传输的文件数限制
+limit = 3
 ip = '192.168.1.9'
 
-# 声明一个管理类管理所传送文件的信息
+# 声明一个管理类记录所传送文件的信息
 class FilePart:
-    def __init__(self, name, size, part, all, data):
+    def __init__(self, name, size, md5, part, all, data):
         # 传入文件信息
         self.name = name
         self.size = size
+        self.md5 = md5
         self.part = part
         self.all = all
         self.data = data
-        # 每块文件md5信息
-        _md5 = hashlib.md5()
-        _md5.update(self.data)
-        self.md5 = _md5.hexdigest()
 
 # 各数据块管理类实例
 def file_spliter(name):
@@ -31,8 +30,19 @@ def file_spliter(name):
     # 块总数(单块限定64K)
     all = size // 65000 + 1
     with open(name, 'rb') as f:
-        data = [FilePart(name, size, i, all, f.read(65000)) for i in range(all)]
+        md5 = hashlib.md5()
+        for line in f:
+            md5.update(line)
+        fmd5 = md5.hexdigest() 
+        f.seek(0)
+        data = [FilePart(name, size, fmd5, i, all, f.read(65000)) for i in range(all)]
     return data
+
+def file_sender(transport, data):
+    fdata = json.dumps({'type':'data','name':data.name,'size':data.size,'part':data.part,'all':data.all,'md5':data.md5}).encode() + b'---+++data+++---' + data.data
+    print('Sending file:{0} (Part {1}/{2})...'.format(data.name, data.part + 1, data.all), end='')
+    transport.sendto(fdata)
+    print('Done.', end='\r')
 
 class EchoClientProtocol:
     # 传入构造函数:发送的内容及asyncio循环实例
@@ -62,12 +72,9 @@ class EchoClientProtocol:
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
                 print('\nMD5 checking failed.')
-            # 非最后一块就发送数据
+            # 非最后一块就发送数据(1秒超时重发)
             elif message['data'] == 'get':
-                fdata = json.dumps({'type':'data','name':self.data[self.count].name,'size':self.data[self.count].size,'part':self.data[self.count].part,'all':self.data[self.count].all,'md5':self.data[self.count].md5}).encode() + b'---+++data+++---' + self.data[self.count].data
-                print('Sending file:{0} (Part {1}/{2})...'.format(self.data[self.count].name, self.data[self.count].part + 1, self.data[self.count].all), end='')
-                self.transport.sendto(fdata)
-                print('Done.', end='\r')
+                file_sender(self.transport, self.data[self.count])
                 self.count += 1
                 
     def error_received(self, exc):
@@ -81,7 +88,7 @@ async def main():
     for f in file:
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: EchoClientProtocol(file_spliter(f), loop),
-          remote_addr=(ip, 12345))
+            remote_addr=(ip, 12345))
     try:
         await protocol.on_con_lost
     finally:
