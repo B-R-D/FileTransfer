@@ -1,8 +1,9 @@
 '''
 UDP客户端，尝试连接服务端。
 当建立连接后发送指定数据。
-问题1：多文件发送；
-问题2：优化代码
+解决1：多文件发送；
+问题2：发送时可直接放入send中；
+问题3：超时则自动断开连接；
 '''
 
 import os, time, json, asyncio, hashlib
@@ -52,13 +53,15 @@ class EchoClientProtocol:
     def datagram_received(self, message, addr):
         message = json.loads(message)
         if message['type'] == 'message':
-            # 最后一块发送完后等待MD5
-            if message['data'] == 'MD5_passed':
+            # 全部文件传输完成后接收complete信息后关闭
+            if message['data'] == 'complete':
                 print('\nTransmission complete.')
                 self.transport.close()
+            # 最后一块发送完后等待MD5
+            elif message['data'] == 'MD5_passed':
+                print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
-                print('\nTransmission failed, MD5 checking failed.')
-                self.transport.close()
+                print('\nMD5 checking failed.')
             # 非最后一块就发送数据
             elif message['data'] == 'get':
                 fdata = json.dumps({'type':'data','name':self.data[self.count].name,'size':self.data[self.count].size,'part':self.data[self.count].part,'all':self.data[self.count].all,'md5':self.data[self.count].md5}).encode() + b'---+++data+++---' + self.data[self.count].data
