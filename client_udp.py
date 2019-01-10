@@ -1,20 +1,29 @@
+# coding:utf-8
 '''
 UDP客户端，尝试连接服务端。
 当建立连接后发送指定数据。
 解决1：多文件发送；
-改进2：发送时可直接放入send中；
+改进2：增加全局错误存储；
 解决3：完善自动重发功能；
-问题4：多次连接服务器失败后退出程序；
+改进4：pause_writing功能；
 改进5：报错抛出异常化；
+改进6：分支语句switch化
+改进7：删除重试函数
 '''
-
-import os, json, asyncio, hashlib
+import os, threading, json, asyncio, hashlib
 
 file = os.listdir('send')
-# 同时传输的文件数限制
-limit = 3
 ip = '192.168.1.9'
 
+def display_file_length(file_size):
+    if file_size < 1024:
+        return '{0:.1f}B'.format(file_size)
+    elif 1024 <= file_size < 1048576:
+        return '{0:.1f}kB'.format(file_size/1024)
+    elif 1048576 <= file_size < 1073741824:
+        return '{0:.1f}MB'.format(file_size/1048576)
+    else:
+        return '{0:.1f}GB'.format(file_size/1073741824)
 # 声明一个管理类记录所传送文件的信息
 class FilePart:
     def __init__(self, name, size, md5, part, all, data):
@@ -40,18 +49,16 @@ def file_spliter(name):
         data = [FilePart(name, size, fmd5, i, all, f.read(65000)) for i in range(all)]
     return data
 
-class EchoClientProtocol:
+class ClientProtocol:
     # 传入构造函数:发送的内容及asyncio循环实例
     def __init__(self, data, loop):
         self.data = data
-        # 重试次数计数，考虑首次正常+1
-        self.retry = -1
         self.now = None
         self.all = data[0].all
         self.loop = loop
-        self.tc = self.loop.call_later(10, self.connection_lost)
-        self.transport = None
         self.on_con_lost = loop.create_future()
+        self.tc = self.loop.call_later(30, self.on_con_lost.set_result, True)
+        self.transport = None
 
     def connection_made(self, transport):
         self.transport = transport
@@ -62,29 +69,34 @@ class EchoClientProtocol:
         self.tc.cancel()
         message = json.loads(message)
         if message['type'] == 'message':
-            # 全部文件传输完成后接收complete信息后关闭
+            # 这里应改进为switch
+            # 全部文件传输完成后接收complete信息并清除定时器，然后接收MD5信息后关闭
             if message['data'] == 'complete':
+                self.tc.cancel()
                 print('\nTransmission complete.')
-                self.transport.close()
             elif message['data'] == 'MD5_passed':
-                print('\nMD5 checking passed, retry {0} time(s).'.format(self.retry))
+                self.transport.close()
+                print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
-                print('\nMD5 checking failed, retry {0} time(s).'.format(self.retry))
+                self.transport.close()
+                print('\nMD5 checking failed.')
             elif message['data'] == 'get':
-                self.now = self.data.pop(0)
-                self.file_sender()
-                self.tc = self.loop.call_later(1, self.file_resender)
+                # 已经pop空了就等待MD5信息
+                if self.data:
+                    self.now = self.data.pop(0)
+                    self.file_sender()
+                    self.tc = self.loop.call_later(1, self.file_resender)
                 
     def error_received(self, exc):
         # 异常处理函数，先忽略
         pass
     def connection_lost(self, exc):
+        print('File:{0}({1}) transmission complete.\n'.format(self.now.name, display_file_length(self.now.size))
         self.on_con_lost.set_result(True)
     
     def connection_sender(self):
         self.tc.cancel()
         self.transport.sendto(json.dumps({'type':'message','data':'established'}).encode())
-        self.retry += 1
         self.tc = self.loop.call_later(1, self.connection_sender)
     
     def file_sender(self):
@@ -95,18 +107,22 @@ class EchoClientProtocol:
     
     # 重试函数
     def file_resender(self):
-        self.retry += 1
+        self.tc.cancel()
         self.file_sender()
+        self.tc = self.loop.call_later(1, self.file_resender)
 
-async def main():
+async def main(f):
     loop = asyncio.get_running_loop()
-    for f in file:
-        transport, protocol = await loop.create_datagram_endpoint(
-            lambda: EchoClientProtocol(file_spliter(f), loop),
-            remote_addr=(ip, 12345))
-        try:
-            await protocol.on_con_lost
-        finally:
-            transport.close()
+    transport, protocol = await loop.create_datagram_endpoint(
+        lambda: ClientProtocol(file_spliter(f), loop),
+        remote_addr=(ip, 12345))
+    try:
+        await protocol.on_con_lost
+    finally:
+        transport.close()
 
-asyncio.run(main())
+# 只能针对每个文件一个线程了
+for f in file:
+    th = threading.Thread(target=asyncio.run, args=(main(f),))
+    th.start()
+th.join()
