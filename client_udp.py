@@ -5,8 +5,7 @@ UDP客户端，尝试连接服务端。
 解决1：多文件发送；
 解决2：增加全局错误存储；
 解决3：完善自动重发功能；
-改进4：pause_writing功能；
-改进5：报错抛出异常化；
+改进4：报错抛出异常化；
 '''
 import os, threading, json, asyncio, hashlib
 
@@ -84,8 +83,7 @@ class ClientProtocol:
                 if self.data:
                     self.now = self.data.pop(0)
                     self.file_sender()
-                    self.tc = self.loop.call_later(1, self.file_sender)
-                
+
     def error_received(self, exc):
         # 异常处理函数，先忽略
         pass

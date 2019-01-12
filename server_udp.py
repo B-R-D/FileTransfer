@@ -4,7 +4,7 @@ UDP服务端，等待客户端的连接。
 解决1：块数增多(超千)时组装文件时间过长；
 解决2：检查MD5用子线程检查以避免阻塞，减少客户端超时；
 解决3：收到块后检查是否在status中，若在则丢弃块以避免客户端丢包导致的多次接收；
-改进4：写入文件函数子线程化；
+解决4：写入文件函数子线程化；
 '''
 import os, threading, json, asyncio, hashlib
 # 全局状态
@@ -46,7 +46,6 @@ class ServerProtocol:
             if info['part'] == len(status[info['name']]):
                 wd = threading.Thread(target=write_data, args=(info, data))
                 wd.start()
-                #write_data(info, data)
                 status[info['name']].append(info['part'])
                 self.transport.sendto(json.dumps({'type':'message','data':'get'}).encode(), addr)
                 # 全部块都已经接收则删除记录并发送完成信息
