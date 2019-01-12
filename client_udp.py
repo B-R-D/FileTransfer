@@ -56,7 +56,7 @@ class ClientProtocol:
         self.all = data[0].all
         self.loop = loop
         self.on_con_lost = loop.create_future()
-        self.tc = self.loop.call_later(30, self.on_con_lost.set_result, True)
+        self.time_counter = self.loop.call_later(30, self.on_con_lost.set_result, True)
         self.transport = None
 
     def connection_made(self, transport):
@@ -64,18 +64,20 @@ class ClientProtocol:
         self.connection_sender()
 
     def datagram_received(self, message, addr):
-        self.tc.cancel()
+        self.time_counter.cancel()
         message = json.loads(message)
         if message['type'] == 'message':
             # 全部文件传输完成后接收complete信息并清除定时器，然后接收MD5信息后关闭
             if message['data'] == 'complete':
-                self.tc.cancel()
+                self.time_counter.cancel()
                 print('\nTransmission complete.')
             elif message['data'] == 'MD5_passed':
+                self.time_counter.join()
                 self.transport.close()
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
                 error.append(message['name'])
+                self.time_counter.join()
                 self.transport.close()
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get':
@@ -93,17 +95,17 @@ class ClientProtocol:
         self.on_con_lost.set_result(True)
     
     def connection_sender(self):
-        self.tc.cancel()
+        self.time_counter.cancel()
         self.transport.sendto(json.dumps({'type':'message','data':'established'}).encode())
-        self.tc = self.loop.call_later(1, self.connection_sender)
+        self.time_counter = self.loop.call_later(1, self.connection_sender)
     
     def file_sender(self):
-        self.tc.cancel()
+        self.time_counter.cancel()
         fdata = json.dumps({'type':'data','name':self.now.name,'size':self.now.size,'part':self.now.part,'all':self.now.all,'md5':self.now.md5}).encode() + b'---+++data+++---' + self.now.data
         print('Sending file:{0} (Part {1}/{2})...'.format(self.now.name, self.now.part + 1, self.now.all), end='')
         self.transport.sendto(fdata)
         print('Done.', end='\n')
-        self.tc = self.loop.call_later(1, self.file_sender)
+        self.time_counter = self.loop.call_later(1, self.file_sender)
 
 async def main(f):
     loop = asyncio.get_running_loop()
