@@ -7,7 +7,7 @@ UDP客户端，尝试连接服务端。
 解决3：完善自动重发功能；
 改进4：报错抛出异常化；
 '''
-import os, threading, json, asyncio, hashlib
+import os, multiprocessing, json, asyncio, hashlib
 
 file = os.listdir('send')
 error = []
@@ -117,7 +117,7 @@ async def main(f):
 
 # 只能针对每个文件一个线程了
 for f in file:
-    th = threading.Thread(target=asyncio.run, args=(main(f),))
+    th = multiprocessing.Process(target=asyncio.run, args=(main(f),))
     th.start()
 th.join()
 if error:

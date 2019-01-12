@@ -2,11 +2,11 @@
 UDP服务端，等待客户端的连接。
 有连接呼入时接收文件并保存。
 解决1：块数增多(超千)时组装文件时间过长；
-解决2：检查MD5用子线程检查以避免阻塞，减少客户端超时；
+解决2：检查MD5用子进程检查以避免阻塞，减少客户端超时；
 解决3：收到块后检查是否在status中，若在则丢弃块以避免客户端丢包导致的多次接收；
-解决4：写入文件函数子线程化；
+解决4：写入文件函数子进程化；
 '''
-import os, time, threading, json, asyncio, hashlib
+import os, time, multiprocessing, json, asyncio, hashlib
 # 全局状态
 status = {}
 
@@ -21,7 +21,7 @@ def display_file_length(file_size):
         return '{0:.1f}GB'.format(file_size/1073741824)
 
 def write_data(info, data):
-    # 保证子线程的执行顺序
+    # 保证子进程的执行顺序
     while True:
         if info['part'] == len(status[info['name']]):
             with open(info['name'], 'ab') as filedata:
@@ -48,7 +48,7 @@ class ServerProtocol:
                 status[info['name']] = []
             # 分块若等于控制器长度则写入并回送收到消息
             if info['part'] == len(status[info['name']]):
-                wd = threading.Thread(target=write_data, args=(info, data))
+                wd = multiprocessing.Process(target=write_data, args=(info, data))
                 wd.start()
                 status[info['name']].append(info['part'])
                 self.transport.sendto(json.dumps({'type':'message','data':'get'}).encode(), addr)
@@ -56,7 +56,7 @@ class ServerProtocol:
                 if len(status[info['name']]) == info['all']:
                     status.pop(info['name'])
                     wd.join()
-                    checker = threading.Thread(target=self.MD5_checker, args=(info, addr))
+                    checker = multiprocessing.Process(target=self.MD5_checker, args=(info, addr))
                     checker.start()
                     self.transport.sendto(json.dumps({'type':'message','data':'complete'}).encode(), addr)
                     print('\nFile: {0}({1}) transmission complete.\n'.format(info['name'], display_file_length(info['size'])))
