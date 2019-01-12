@@ -11,7 +11,7 @@ import os, threading, json, asyncio, hashlib
 
 file = os.listdir('send')
 error = []
-ip = '192.168.1.9'
+ip = '192.168.1.3'
 
 def display_file_length(file_size):
     if file_size < 1024:
@@ -72,12 +72,10 @@ class ClientProtocol:
                 self.time_counter.cancel()
                 print('\nTransmission complete.')
             elif message['data'] == 'MD5_passed':
-                self.time_counter.join()
                 self.transport.close()
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
                 error.append(message['name'])
-                self.time_counter.join()
                 self.transport.close()
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get':

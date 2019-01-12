@@ -6,7 +6,7 @@ UDP服务端，等待客户端的连接。
 解决3：收到块后检查是否在status中，若在则丢弃块以避免客户端丢包导致的多次接收；
 解决4：写入文件函数子线程化；
 '''
-import os, threading, json, asyncio, hashlib
+import os, time, threading, json, asyncio, hashlib
 # 全局状态
 status = {}
 
@@ -19,12 +19,16 @@ def display_file_length(file_size):
         return '{0:.1f}MB'.format(file_size/1048576)
     else:
         return '{0:.1f}GB'.format(file_size/1073741824)
-# 考虑把该函数用子线程实现
+
 def write_data(info, data):
-    # 打开文件对象并附加数据
-    with open(info['name'], 'ab') as filedata:
-        filedata.write(data)
-    print('{0}(part {1}/{2}) complete.'.format(info['name'], info['part'] + 1, info['all']), end='\n')
+    # 保证子线程的执行顺序
+    while True:
+        if info['part'] == len(status[info['name']]):
+            with open(info['name'], 'ab') as filedata:
+                filedata.write(data)
+            print('{0}(part {1}/{2}) complete.'.format(info['name'], info['part'] + 1, info['all']), end='\n')
+            break
+        time.sleep(0.1)
 
 class ServerProtocol:
     def connection_made(self, transport):
