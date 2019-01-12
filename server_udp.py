@@ -44,12 +44,15 @@ class ServerProtocol:
                 status[info['name']] = []
             # 分块若等于控制器长度则写入并回送收到消息
             if info['part'] == len(status[info['name']]):
-                write_data(info, data)
+                wd = threading.Thread(target=write_data, args=(info, data))
+                wd.start()
+                #write_data(info, data)
                 status[info['name']].append(info['part'])
                 self.transport.sendto(json.dumps({'type':'message','data':'get'}).encode(), addr)
                 # 全部块都已经接收则删除记录并发送完成信息
                 if len(status[info['name']]) == info['all']:
                     status.pop(info['name'])
+                    wd.join()
                     checker = threading.Thread(target=self.MD5_checker, args=(info, addr))
                     checker.start()
                     self.transport.sendto(json.dumps({'type':'message','data':'complete'}).encode(), addr)
@@ -67,7 +70,7 @@ class ServerProtocol:
             self.transport.sendto(json.dumps({'type':'message','data':'MD5_passed'}).encode(), addr)
             print('\n', info['name'], 'MD5 checking passed.\n')
         else:
-            self.transport.sendto(json.dumps({'type':'message','data':'MD5_failed'}).encode(), addr)
+            self.transport.sendto(json.dumps({'type':'message','data':'MD5_failed','name':info['name']}).encode(), addr)
             print('\n', info['name'], 'MD5 checking failed.\n')
         
 async def main():

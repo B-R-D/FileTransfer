@@ -3,16 +3,15 @@
 UDP客户端，尝试连接服务端。
 当建立连接后发送指定数据。
 解决1：多文件发送；
-改进2：增加全局错误存储；
+解决2：增加全局错误存储；
 解决3：完善自动重发功能；
 改进4：pause_writing功能；
 改进5：报错抛出异常化；
-改进6：分支语句switch化
-改进7：删除重试函数
 '''
 import os, threading, json, asyncio, hashlib
 
 file = os.listdir('send')
+error = []
 ip = '192.168.1.9'
 
 def display_file_length(file_size):
@@ -24,6 +23,7 @@ def display_file_length(file_size):
         return '{0:.1f}MB'.format(file_size/1048576)
     else:
         return '{0:.1f}GB'.format(file_size/1073741824)
+
 # 声明一个管理类记录所传送文件的信息
 class FilePart:
     def __init__(self, name, size, md5, part, all, data):
@@ -62,14 +62,12 @@ class ClientProtocol:
 
     def connection_made(self, transport):
         self.transport = transport
-        # 只有第一块时才发送建立连接消息(这条消息丢失会导致文件无法传输)
         self.connection_sender()
 
     def datagram_received(self, message, addr):
         self.tc.cancel()
         message = json.loads(message)
         if message['type'] == 'message':
-            # 这里应改进为switch
             # 全部文件传输完成后接收complete信息并清除定时器，然后接收MD5信息后关闭
             if message['data'] == 'complete':
                 self.tc.cancel()
@@ -78,6 +76,7 @@ class ClientProtocol:
                 self.transport.close()
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
+                error.append(message['name'])
                 self.transport.close()
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get':
@@ -85,13 +84,14 @@ class ClientProtocol:
                 if self.data:
                     self.now = self.data.pop(0)
                     self.file_sender()
-                    self.tc = self.loop.call_later(1, self.file_resender)
+                    self.tc = self.loop.call_later(1, self.file_sender)
                 
     def error_received(self, exc):
         # 异常处理函数，先忽略
         pass
+        
     def connection_lost(self, exc):
-        print('File:{0}({1}) transmission complete.\n'.format(self.now.name, display_file_length(self.now.size))
+        print('File:{0}({1}) transmission complete.\n'.format(self.now.name, display_file_length(self.now.size)))
         self.on_con_lost.set_result(True)
     
     def connection_sender(self):
@@ -100,16 +100,12 @@ class ClientProtocol:
         self.tc = self.loop.call_later(1, self.connection_sender)
     
     def file_sender(self):
+        self.tc.cancel()
         fdata = json.dumps({'type':'data','name':self.now.name,'size':self.now.size,'part':self.now.part,'all':self.now.all,'md5':self.now.md5}).encode() + b'---+++data+++---' + self.now.data
         print('Sending file:{0} (Part {1}/{2})...'.format(self.now.name, self.now.part + 1, self.now.all), end='')
         self.transport.sendto(fdata)
         print('Done.', end='\n')
-    
-    # 重试函数
-    def file_resender(self):
-        self.tc.cancel()
-        self.file_sender()
-        self.tc = self.loop.call_later(1, self.file_resender)
+        self.tc = self.loop.call_later(1, self.file_sender)
 
 async def main(f):
     loop = asyncio.get_running_loop()
@@ -126,3 +122,7 @@ for f in file:
     th = threading.Thread(target=asyncio.run, args=(main(f),))
     th.start()
 th.join()
+if error:
+    print('以下文件MD5检查出错：\n')
+    for f in error:
+        print(f)
