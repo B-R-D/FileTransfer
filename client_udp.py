@@ -7,21 +7,12 @@ UDP客户端，尝试连接服务端。
 解决3：完善自动重发功能；
 改进4：报错抛出异常化；
 '''
-import os, multiprocessing, json, asyncio, hashlib
+import os, threading, json, asyncio, hashlib
 
 file = os.listdir('send')
+file_at_same_time = 3
 error = []
-ip = '192.168.1.3'
-
-def display_file_length(file_size):
-    if file_size < 1024:
-        return '{0:.1f}B'.format(file_size)
-    elif 1024 <= file_size < 1048576:
-        return '{0:.1f}kB'.format(file_size/1024)
-    elif 1048576 <= file_size < 1073741824:
-        return '{0:.1f}MB'.format(file_size/1048576)
-    else:
-        return '{0:.1f}GB'.format(file_size/1073741824)
+ip = '192.168.1.9'
 
 # 声明一个管理类记录所传送文件的信息
 class FilePart:
@@ -34,10 +25,21 @@ class FilePart:
         self.all = all
         self.data = data
 
-# 各数据块管理类实例
+def display_file_length(file_size):
+    '''格式化文件长度'''
+    if file_size < 1024:
+        return '{0:.1f}B'.format(file_size)
+    elif 1024 <= file_size < 1048576:
+        return '{0:.1f}kB'.format(file_size/1024)
+    elif 1048576 <= file_size < 1073741824:
+        return '{0:.1f}MB'.format(file_size/1048576)
+    else:
+        return '{0:.1f}GB'.format(file_size/1073741824)
+
 def file_spliter(name):
+    '''将文件分割为数据块'''
     size = os.path.getsize(name)
-    # 块总数(单块限定64K)
+    # 单块限定64K
     all = size // 65000 + 1
     with open(name, 'rb') as f:
         md5 = hashlib.md5()
@@ -67,15 +69,17 @@ class ClientProtocol:
         self.time_counter.cancel()
         message = json.loads(message)
         if message['type'] == 'message':
-            # 全部文件传输完成后接收complete信息并清除定时器，然后接收MD5信息后关闭
+            # 文件传输完成后接收complete信息并清除定时器，然后接收MD5信息后发送结束信息后关闭
             if message['data'] == 'complete':
                 self.time_counter.cancel()
                 print('\nTransmission complete.')
             elif message['data'] == 'MD5_passed':
+                self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
                 self.transport.close()
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
                 error.append(message['name'])
+                self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
                 self.transport.close()
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get':
@@ -93,11 +97,13 @@ class ClientProtocol:
         self.on_con_lost.set_result(True)
     
     def connection_sender(self):
+        '''发送连接信息（1秒重发）'''
         self.time_counter.cancel()
         self.transport.sendto(json.dumps({'type':'message','data':'established'}).encode())
         self.time_counter = self.loop.call_later(1, self.connection_sender)
     
     def file_sender(self):
+        '''发送文件分块（1秒重发）'''
         self.time_counter.cancel()
         fdata = json.dumps({'type':'data','name':self.now.name,'size':self.now.size,'part':self.now.part,'all':self.now.all,'md5':self.now.md5}).encode() + b'---+++data+++---' + self.now.data
         print('Sending file:{0} (Part {1}/{2})...'.format(self.now.name, self.now.part + 1, self.now.all), end='')
@@ -106,6 +112,8 @@ class ClientProtocol:
         self.time_counter = self.loop.call_later(1, self.file_sender)
 
 async def main(f):
+    '''客户端主函数'''
+    threading_controller.acquire()
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(
         lambda: ClientProtocol(file_spliter(f), loop),
@@ -113,14 +121,19 @@ async def main(f):
     try:
         await protocol.on_con_lost
     finally:
+        threading_controller.release()
         transport.close()
 
-# 只能针对每个文件一个线程了
+# 每个文件一个线程，同时运行线程不超过设定值
+threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
 for f in file:
-    th = multiprocessing.Process(target=asyncio.run, args=(main(f),))
+    th = threading.Thread(target=asyncio.run, args=(main(f),))
     th.start()
 th.join()
+
 if error:
     print('以下文件MD5检查出错：\n')
     for f in error:
         print(f)
+else:
+    print('File transmission successfully completed without errors.\n')
