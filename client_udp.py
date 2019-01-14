@@ -16,11 +16,10 @@ ip = '192.168.1.9'
 
 # 声明一个管理类记录所传送文件的信息
 class FilePart:
-    def __init__(self, name, size, md5, part, all, data):
+    def __init__(self, name, size, part, all, data):
         # 传入文件信息
         self.name = name
         self.size = size
-        self.md5 = md5
         self.part = part
         self.all = all
         self.data = data
@@ -42,20 +41,16 @@ def file_spliter(name):
     # 单块限定64K
     all = size // 65000 + 1
     with open(name, 'rb') as f:
-        md5 = hashlib.md5()
-        for line in f:
-            md5.update(line)
-        fmd5 = md5.hexdigest() 
-        f.seek(0)
-        data = [FilePart(name, size, fmd5, i, all, f.read(65000)) for i in range(all)]
+        data = [FilePart(name, size, i, all, f.read(65000)) for i in range(all)]
     return data
 
 class ClientProtocol:
     # 传入构造函数:发送的内容及asyncio循环实例
     def __init__(self, data, loop):
         self.data = data
-        self.now = None
-        self.all = data[0].all
+        self.md5 = None
+        thread_md5 = None
+        self.now = data[0]
         self.loop = loop
         self.on_con_lost = loop.create_future()
         self.time_counter = self.loop.call_later(30, self.on_con_lost.set_result, True)
@@ -63,7 +58,9 @@ class ClientProtocol:
 
     def connection_made(self, transport):
         self.transport = transport
-        self.connection_sender()
+        self.message_sender(json.dumps({'type':'message','data':'established'}).encode())
+        self.thread_md5 = threading.Thread(target=self.md5_gener)
+        self.thread_md5.start()
 
     def datagram_received(self, message, addr):
         self.time_counter.cancel()
@@ -95,21 +92,38 @@ class ClientProtocol:
     def connection_lost(self, exc):
         print('File:{0}({1}) transmission complete.\n'.format(self.now.name, display_file_length(self.now.size)))
         self.on_con_lost.set_result(True)
-    
-    def connection_sender(self):
-        '''发送连接信息（1秒重发）'''
-        self.time_counter.cancel()
-        self.transport.sendto(json.dumps({'type':'message','data':'established'}).encode())
-        self.time_counter = self.loop.call_later(1, self.connection_sender)
-    
+        
     def file_sender(self):
         '''发送文件分块（1秒重发）'''
-        self.time_counter.cancel()
-        fdata = json.dumps({'type':'data','name':self.now.name,'size':self.now.size,'part':self.now.part,'all':self.now.all,'md5':self.now.md5}).encode() + b'---+++data+++---' + self.now.data
+        # 判定MD5存在性，不存在时判定末块，是末块就等待MD5
+        if self.md5:
+            fdata = json.dumps({'type':'data','name':self.now.name,'size':self.now.size,'part':self.now.part,'all':self.now.all,'md5':self.md5}).encode() + b'---+++data+++---' + self.now.data
+        else:
+            if self.now.part + 1 == self.now.all:
+                self.thread_md5.join()
+                fdata = json.dumps({'type':'data','name':self.now.name,'size':self.now.size,'part':self.now.part,'all':self.now.all,'md5':self.md5}).encode() + b'---+++data+++---' + self.now.data
+            else:
+                fdata = json.dumps({'type':'data','name':self.now.name,'size':self.now.size,'part':self.now.part,'all':self.now.all}).encode() + b'---+++data+++---' + self.now.data
         print('Sending file:{0} (Part {1}/{2})...'.format(self.now.name, self.now.part + 1, self.now.all), end='')
-        self.transport.sendto(fdata)
+        self.message_sender(fdata)
         print('Done.', end='\n')
-        self.time_counter = self.loop.call_later(1, self.file_sender)
+    
+    def message_sender(self, message):
+        '''
+        自带1秒重发机制的消息回发
+        注意此处传入的参数必须是打包好的
+        '''
+        self.time_counter.cancel()
+        self.transport.sendto(message)
+        self.time_counter = self.loop.call_later(1, self.message_sender, message)
+    
+    def md5_gener(self):
+        md5 = hashlib.md5()
+        with open(self.now.name, 'rb') as f:
+            for line in f:
+                md5.update(line)
+        fmd5 = md5.hexdigest()
+        self.md5 = fmd5
 
 async def main(f):
     '''客户端主函数'''
@@ -127,9 +141,9 @@ async def main(f):
 # 每个文件一个线程，同时运行线程不超过设定值
 threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
 for f in file:
-    th = threading.Thread(target=asyncio.run, args=(main(f),))
-    th.start()
-th.join()
+    thread_asyncio = threading.Thread(target=asyncio.run, args=(main(f),))
+    thread_asyncio.start()
+thread_asyncio.join()
 
 if error:
     print('以下文件MD5检查出错：\n')
