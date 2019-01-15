@@ -122,8 +122,7 @@ class ClientProtocol:
         with open(self.now.name, 'rb') as f:
             for line in f:
                 md5.update(line)
-        fmd5 = md5.hexdigest()
-        self.md5 = fmd5
+        self.md5 = md5.hexdigest()
 
 async def main(f):
     '''客户端主函数'''
