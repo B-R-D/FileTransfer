@@ -10,6 +10,7 @@ UDP客户端，尝试连接服务端。
 import os, threading, json, asyncio, hashlib
 
 file = os.listdir('send')
+#file_name = 'test'
 file_at_same_time = 3
 error = []
 ip = '192.168.1.9'
@@ -35,26 +36,26 @@ def display_file_length(file_size):
     else:
         return '{0:.1f}GB'.format(file_size/1073741824)
 
-def file_spliter(name):
-    '''将文件分割为数据块'''
-    size = os.path.getsize(name)
+def file_spliter(f):
+    '''返回数据块的生成器'''
+    size = os.path.getsize(f.name)
     # 单块限定64K
     all = size // 65000 + 1
-    with open(name, 'rb') as f:
-        data = [FilePart(name, size, i, all, f.read(65000)) for i in range(all)]
+    data = (FilePart(f.name, size, i, all, f.read(65000)) for i in range(all))
     return data
+
 
 class ClientProtocol:
     # 传入构造函数:发送的内容及asyncio循环实例
-    def __init__(self, data, loop):
-        self.data = data
-        self.md5 = None
-        thread_md5 = None
-        self.now = data[0]
+    def __init__(self, gener, name, loop):
+        self.gener = gener
+        self.now = name
         self.loop = loop
+        self.md5 = None
+        self.thread_md5 = None
+        self.transport = None
         self.on_con_lost = loop.create_future()
         self.time_counter = self.loop.call_later(30, self.on_con_lost.set_result, True)
-        self.transport = None
 
     def connection_made(self, transport):
         self.transport = transport
@@ -81,9 +82,11 @@ class ClientProtocol:
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get':
                 # 已经pop空了就等待MD5信息
-                if self.data:
-                    self.now = self.data.pop(0)
+                try:
+                    self.now = next(self.gener)
                     self.file_sender()
+                except StopIteration:
+                    pass
 
     def error_received(self, exc):
         # 异常处理函数，先忽略
@@ -119,28 +122,29 @@ class ClientProtocol:
     
     def md5_gener(self):
         md5 = hashlib.md5()
-        with open(self.now.name, 'rb') as f:
+        with open(self.now, 'rb') as f:
             for line in f:
                 md5.update(line)
         self.md5 = md5.hexdigest()
 
-async def main(f):
+async def main(name):
     '''客户端主函数'''
     threading_controller.acquire()
     loop = asyncio.get_running_loop()
-    transport, protocol = await loop.create_datagram_endpoint(
-        lambda: ClientProtocol(file_spliter(f), loop),
-        remote_addr=(ip, 12345))
-    try:
-        await protocol.on_con_lost
-    finally:
-        threading_controller.release()
-        transport.close()
+    with open(name, 'rb') as fstream:
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: ClientProtocol(file_spliter(fstream), fstream.name, loop),
+            remote_addr=(ip, 12345))
+        try:
+            await protocol.on_con_lost
+        finally:
+            threading_controller.release()
+            transport.close()
 
 # 每个文件一个线程，同时运行线程不超过设定值
 threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
-for f in file:
-    thread_asyncio = threading.Thread(target=asyncio.run, args=(main(f),))
+for name in file:
+    thread_asyncio = threading.Thread(target=asyncio.run, args=(main(name),))
     thread_asyncio.start()
 thread_asyncio.join()
 
