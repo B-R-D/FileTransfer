@@ -1,10 +1,14 @@
-import os, sys
+import os, sys, threading, json, asyncio, hashlib
 from PyQt5.QtCore import Qt, QCoreApplication
 from PyQt5.QtWidgets import QWidget, QPushButton, QApplication, QDesktopWidget, QLabel, QTextEdit, QGridLayout, QFileDialog, QFrame, QMainWindow, QAction
 from PyQt5.QtGui import QFont
 
-class ClientWindow(QMainWindow):
+'''
+----------------Qt5的GUI部分----------------
+'''
 
+class ClientWindow(QMainWindow):
+    '''Qt5窗体类'''
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -31,7 +35,7 @@ class ClientWindow(QMainWindow):
         self.Lfile.setFrameStyle(QFrame.Box)
         self.Lfile.setAlignment(Qt.AlignTop)
         Bsend = QPushButton('发送', self)
-        # 如何连接到client模块中的函数？
+
         # Bsend.clicked.connect(self.ftc)
         
         # 设置布局
@@ -49,7 +53,7 @@ class ClientWindow(QMainWindow):
         
     # 选择要发送的文件且显示文件名列表
     def fileDialog(self):
-        fname = QFileDialog.getOpenFileNames(self, '选择要发送的文件', os.path.abspath('.'))
+        fname = QFileDialog.getOpenFileNames(self, '请选择要发送的文件', os.path.abspath('.'))
         flist = ''
         if fname[0]:
             for f in fname[0]:
@@ -66,11 +70,17 @@ class ClientWindow(QMainWindow):
         cp = QDesktopWidget().availableGeometry().center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())
-        
+
     # 按ESC时关闭窗体
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
             self.close()
+
+'''
+----------------主程序部分----------------
+'''
+
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

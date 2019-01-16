@@ -10,7 +10,6 @@ UDP客户端，尝试连接服务端。
 import os, threading, json, asyncio, hashlib
 
 file = os.listdir('send')
-#file_name = 'test'
 file_at_same_time = 3
 error = []
 ip = '192.168.1.9'
@@ -121,6 +120,7 @@ class ClientProtocol:
         self.time_counter = self.loop.call_later(1, self.message_sender, message)
     
     def md5_gener(self):
+        '''计算MD5值'''
         md5 = hashlib.md5()
         with open(self.now, 'rb') as f:
             for line in f:
