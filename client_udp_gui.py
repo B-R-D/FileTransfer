@@ -1,14 +1,11 @@
-import os, sys, threading, json, asyncio, hashlib
+import os, sys, threading, json, asyncio, hashlib, random
 from multiprocessing import Process
 from PyQt5.QtCore import Qt, QCoreApplication
 from PyQt5.QtWidgets import QWidget, QPushButton, QApplication, QDesktopWidget, QLabel, QGridLayout, QFileDialog, QFrame, QMainWindow, QAction, QMessageBox
 from PyQt5.QtGui import QFont
 
-
-# 声明一个管理类记录所传送文件的信息
 class FilePart:
     def __init__(self, name, size, part, all, data):
-        # 传入文件信息
         self.name = name
         self.size = size
         self.part = part
@@ -16,11 +13,12 @@ class FilePart:
         self.data = data
 
 class ClientProtocol:
-    # 传入构造函数:发送的内容及asyncio循环实例
+
     def __init__(self, gener, path, loop):
         self.gener = gener
-        self.now = path
+        self.path = path
         self.loop = loop
+        self.now = next(gener)
         self.md5 = None
         self.thread_md5 = None
         self.transport = None
@@ -29,16 +27,15 @@ class ClientProtocol:
 
     def connection_made(self, transport):
         self.transport = transport
-        self.message_sender(json.dumps({'type':'message','data':'established'}).encode())
+        self.message_sender(json.dumps({'type':'message','data':'established','name':os.path.split(self.path)[1]}).encode())
         self.thread_md5 = threading.Thread(target=self.md5_gener)
         self.thread_md5.start()
 
     def datagram_received(self, message, addr):
-        self.time_counter.cancel()
         message = json.loads(message)
         if message['type'] == 'message':
             # 文件传输完成后接收complete信息并清除定时器，然后接收MD5信息后发送结束信息后关闭
-            if message['data'] == 'complete':
+            if message['data'] == 'complete' and message['name'] == self.now.name:
                 self.time_counter.cancel()
                 print('\nTransmission complete.')
             elif message['data'] == 'MD5_passed':
@@ -46,15 +43,15 @@ class ClientProtocol:
                 self.transport.close()
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
-                error.append(message['name'])
+                #error.append(message['name'])
                 self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
                 self.transport.close()
                 print('\nMD5 checking failed.')
-            elif message['data'] == 'get':
-                # 已经pop空了就等待MD5信息
+            elif message['data'] == 'get' and message['part'] == self.now.part and message['name'] == self.now.name:
+                self.time_counter.cancel()
                 try:
-                    self.now = next(self.gener)
                     self.file_sender()
+                    self.now = next(self.gener)
                 except StopIteration:
                     pass
 
@@ -67,7 +64,7 @@ class ClientProtocol:
         self.on_con_lost.set_result(True)
         
     def file_sender(self):
-        '''发送文件分块（1秒重发）'''
+        '''发送文件分块'''
         # 判定MD5存在性，不存在时判定末块，是末块就等待MD5
         if self.md5:
             fdata = json.dumps({'type':'data','name':self.now.name,'size':self.now.size,'part':self.now.part,'all':self.now.all,'md5':self.md5}).encode() + b'---+++data+++---' + self.now.data
@@ -83,17 +80,17 @@ class ClientProtocol:
     
     def message_sender(self, message):
         '''
-        自带1秒重发机制的消息回发
+        自带随机秒重发机制的消息回发
         注意此处传入的参数必须是打包好的
         '''
         self.time_counter.cancel()
         self.transport.sendto(message)
-        self.time_counter = self.loop.call_later(1, self.message_sender, message)
+        self.time_counter = self.loop.call_later(random.random() + 0.5, self.message_sender, message)
     
     def md5_gener(self):
         '''计算MD5值'''
         md5 = hashlib.md5()
-        with open(self.now, 'rb') as f:
+        with open(self.path, 'rb') as f:
             for line in f:
                 md5.update(line)
         self.md5 = md5.hexdigest()
@@ -183,19 +180,18 @@ def display_file_length(file_size):
     else:
         return '{0:.1f}GB'.format(file_size/1073741824)
 
-def file_spliter(f):
-    '''返回数据块的生成器'''
-    size = os.path.getsize(f.name)
-    # 单块限定64K
+def file_spliter(fstream):
+    '''返回数据块的生成器（单块限定64K）'''
+    size = os.path.getsize(fstream.name)
     all = size // 65000 + 1
-    data = (FilePart(os.path.split(f.name)[1], size, i, all, f.read(65000)) for i in range(all))
+    data = (FilePart(os.path.split(fstream.name)[1], size, i, all, fstream.read(65000)) for i in range(all))
     return data
 
-async def main(threading_controller, name, host):
-    '''单个文件主函数'''
+async def main(host, path, threading_controller):
+    '''客户端主函数'''
     threading_controller.acquire()
     loop = asyncio.get_running_loop()
-    with open(name, 'rb') as fstream:
+    with open(path, 'rb') as fstream:
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: ClientProtocol(file_spliter(fstream), fstream.name, loop),
             remote_addr=(host, 12345))
@@ -208,14 +204,14 @@ async def main(threading_controller, name, host):
 def thread_starter(file_at_same_time, file, host):
     '''客户端发送文件主函数'''
     threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
-    for name in file:
-        thread_asyncio = threading.Thread(target=asyncio.run, args=(main(threading_controller, name, host),))
+    for path in file:
+        thread_asyncio = threading.Thread(target=asyncio.run, args=(main(host, path, threading_controller),))
         thread_asyncio.start()
     thread_asyncio.join()
 
 if __name__ == '__main__':
     file = []
-    file_at_same_time = 3
+    file_at_same_time = 2
     error = []
     host = '192.168.1.3'
     app = QApplication(sys.argv)
