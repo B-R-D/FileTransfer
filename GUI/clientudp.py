@@ -1,8 +1,10 @@
-import os, sys, threading, json, asyncio, hashlib, random
-from multiprocessing import Process
-from PyQt5.QtCore import Qt, QCoreApplication
-from PyQt5.QtWidgets import QWidget, QPushButton, QApplication, QDesktopWidget, QLabel, QGridLayout, QFileDialog, QFrame, QMainWindow, QAction, QMessageBox
-from PyQt5.QtGui import QFont
+# coding:utf-8
+'''
+UDP客户端，尝试连接服务端。
+当建立连接后发送指定数据。
+'''
+
+import os, threading, random, hashlib, asyncio, json
 
 class FilePart:
     def __init__(self, name, size, part, all, data):
@@ -11,6 +13,24 @@ class FilePart:
         self.part = part
         self.all = all
         self.data = data
+
+def display_file_length(file_size):
+    '''格式化文件长度'''
+    if file_size < 1024:
+        return '{0:.1f}B'.format(file_size)
+    elif 1024 <= file_size < 1048576:
+        return '{0:.1f}kB'.format(file_size/1024)
+    elif 1048576 <= file_size < 1073741824:
+        return '{0:.1f}MB'.format(file_size/1048576)
+    else:
+        return '{0:.1f}GB'.format(file_size/1073741824)
+
+def file_spliter(fstream):
+    '''返回数据块的生成器（单块限定64K）'''
+    size = os.path.getsize(fstream.name)
+    all = size // 65000 + 1
+    data = (FilePart(os.path.split(fstream.name)[1], size, i, all, fstream.read(65000)) for i in range(all))
+    return data
 
 class ClientProtocol:
 
@@ -95,98 +115,6 @@ class ClientProtocol:
                 md5.update(line)
         self.md5 = md5.hexdigest()
 
-class ClientWindow(QMainWindow):
-    '''Qt5窗体类'''
-    def __init__(self):
-        super().__init__()
-        self.initUI()
-        
-    def initUI(self):
-        self.setFont(QFont('Arial', 10))
-        # 是否可以按照屏幕分辨率动态设置窗口尺寸？
-        self.resize(600, 800)
-        self.center()
-        
-        # 添加菜单栏
-        menubar = self.menuBar()
-        settingMenu = menubar.addMenu('设置(&S)')
-        partAct = QAction('分块(&P)', self)
-        exitAct = QAction('退出(&Q)', self)
-        exitAct.triggered.connect(QCoreApplication.instance().quit)
-        settingMenu.addAction(partAct)
-        settingMenu.addSeparator()
-        settingMenu.addAction(exitAct)
-        
-        Bselector = QPushButton('选择文件', self)    
-        flist = Bselector.clicked.connect(self.fileDialog)
-        self.Lfile = QLabel('未选中文件')
-        self.Lfile.setFrameStyle(QFrame.Box)
-        self.Lfile.setAlignment(Qt.AlignTop)
-        Bsend = QPushButton('发送', self)
-
-        Bsend.clicked.connect(self.fileChecker)
-        
-        # 设置布局
-        widget = QWidget()
-        self.setCentralWidget(widget)
-        grid = QGridLayout()
-        grid.setSpacing(30)
-        grid.addWidget(Bselector, 1, 1, 1, 1)
-        grid.addWidget(self.Lfile, 2, 1)
-        grid.addWidget(Bsend, 3, 1, 1, 1)
-        widget.setLayout(grid)
-        
-        self.setWindowTitle('FileTransfer')       
-        self.show()
-        
-    # 选择要发送的文件且显示文件名列表
-    def fileDialog(self):
-        fname = QFileDialog.getOpenFileNames(self, '请选择要发送的文件', os.path.abspath('.'))
-        flist = ''
-        if fname[0]:
-            for f in fname[0]:
-                flist += os.path.split(f)[1] + '\n'
-                file.append(f)
-            flist = flist[:-1]
-            self.Lfile.setText(flist)
-
-    def fileChecker(self):
-        if not file:
-            QMessageBox.warning(self, '错误', '未选择文件', QMessageBox.Ok)
-        else:
-            sender = Process(target=thread_starter, args=(file_at_same_time, file, host))
-            sender.start()
-    
-    # 打开窗体时位于屏幕中心
-    def center(self):
-        qr = self.frameGeometry()
-        cp = QDesktopWidget().availableGeometry().center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
-
-    # 按ESC时关闭窗体
-    def keyPressEvent(self, k):
-        if k.key() == Qt.Key_Escape:
-            self.close()
-
-def display_file_length(file_size):
-    '''格式化文件长度'''
-    if file_size < 1024:
-        return '{0:.1f}B'.format(file_size)
-    elif 1024 <= file_size < 1048576:
-        return '{0:.1f}kB'.format(file_size/1024)
-    elif 1048576 <= file_size < 1073741824:
-        return '{0:.1f}MB'.format(file_size/1048576)
-    else:
-        return '{0:.1f}GB'.format(file_size/1073741824)
-
-def file_spliter(fstream):
-    '''返回数据块的生成器（单块限定64K）'''
-    size = os.path.getsize(fstream.name)
-    all = size // 65000 + 1
-    data = (FilePart(os.path.split(fstream.name)[1], size, i, all, fstream.read(65000)) for i in range(all))
-    return data
-
 async def main(host, path, threading_controller):
     '''客户端主函数'''
     threading_controller.acquire()
@@ -202,18 +130,9 @@ async def main(host, path, threading_controller):
             transport.close()
 
 def thread_starter(file_at_same_time, file, host):
-    '''客户端发送文件主函数'''
+    '''客户端启动函数'''
     threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
     for path in file:
         thread_asyncio = threading.Thread(target=asyncio.run, args=(main(host, path, threading_controller),))
         thread_asyncio.start()
     thread_asyncio.join()
-
-if __name__ == '__main__':
-    file = []
-    file_at_same_time = 2
-    error = []
-    host = '192.168.1.3'
-    app = QApplication(sys.argv)
-    window = ClientWindow()
-    sys.exit(app.exec())

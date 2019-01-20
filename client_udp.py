@@ -50,9 +50,9 @@ class ClientProtocol:
 
     def connection_made(self, transport):
         self.transport = transport
-        self.message_sender(json.dumps({'type':'message','data':'established','name':self.name}).encode())
         self.thread_md5 = threading.Thread(target=self.md5_gener)
         self.thread_md5.start()
+        self.message_sender(json.dumps({'type':'message','data':'established','name':self.name}).encode())
 
     def datagram_received(self, message, addr):
         message = json.loads(message)
