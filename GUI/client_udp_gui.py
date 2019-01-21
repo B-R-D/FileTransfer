@@ -5,7 +5,7 @@ UDP客户端GUI版
 改进2：文件传输完成后提示完成；
 改进3：添加时不清除已添加，有按钮可清除；
 改进4：MD5检查错误的文件提示；
-改进5：选择文件时记住上次位置；
+解决5：选择文件时记住上次位置；
 解决6：按照屏幕分辨率动态设置窗口尺寸；
 '''
 import os, sys
@@ -28,6 +28,7 @@ class ClientWindow(QMainWindow):
     '''Qt5窗体类'''
     def __init__(self):
         super().__init__()
+        self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
         self.initUI()
         
     def initUI(self):
@@ -87,7 +88,9 @@ class ClientWindow(QMainWindow):
         
     # 选择要发送的文件且显示文件名列表
     def fileDialog(self):
-        fname = QFileDialog.getOpenFileNames(self, '请选择文件')
+        self.settings.beginGroup('Misc')
+        setting_path_history = self.settings.value('path_history', '.')
+        fname = QFileDialog.getOpenFileNames(self, '请选择文件', setting_path_history)
         flist = ''
         if fname[0]:
             for f in fname[0]:
@@ -95,6 +98,9 @@ class ClientWindow(QMainWindow):
                 file.append(f)
             flist = flist[:-1]
             self.Lfile.setText(flist)
+            self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
+        self.settings.sync()
+        self.settings.endGroup()
     
     # 测试有没有选中文件
     def fileChecker(self):
