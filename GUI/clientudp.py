@@ -115,24 +115,24 @@ class ClientProtocol:
                 md5.update(line)
         self.md5 = md5.hexdigest()
 
-async def main(host, path, threading_controller):
+async def main(host, port, path, threading_controller):
     '''客户端主函数'''
     threading_controller.acquire()
     loop = asyncio.get_running_loop()
     with open(path, 'rb') as fstream:
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: ClientProtocol(file_spliter(fstream), fstream.name, loop),
-            remote_addr=(host, 12345))
+            remote_addr=(host, port))
         try:
             await protocol.on_con_lost
         finally:
             threading_controller.release()
             transport.close()
 
-def thread_starter(file_at_same_time, file, host):
+def thread_starter(host, port, file, file_at_same_time):
     '''客户端启动函数'''
     threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
     for path in file:
-        thread_asyncio = threading.Thread(target=asyncio.run, args=(main(host, path, threading_controller),))
+        thread_asyncio = threading.Thread(target=asyncio.run, args=(main(host, port, path, threading_controller),))
         thread_asyncio.start()
     thread_asyncio.join()

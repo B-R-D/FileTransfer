@@ -27,6 +27,9 @@ class FilePart:
 class ClientWindow(QMainWindow):
     '''Qt5窗体类'''
     def __init__(self):
+        self.file = []
+        self.Bcancel = []
+        self.Lfile = []
         super().__init__()
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
         self.initUI()
@@ -64,11 +67,11 @@ class ClientWindow(QMainWindow):
         netAct.triggered.connect(self.netSettingDialog)
         fileAct.triggered.connect(self.fileSettingDialog)
 
-        self.Bselector = QPushButton('选择文件', self)    
+        self.Bselector = QPushButton('选择文件', self)
         flist = self.Bselector.clicked.connect(self.fileDialog)
-        self.Lfile = QLabel('未选中文件')
-        self.Lfile.setFrameStyle(QFrame.Box)
-        self.Lfile.setAlignment(Qt.AlignTop)
+        # 文件为空时的控件
+        self.Lfile_empty = (QLabel('未选中文件'))
+        self.Lfile_empty.setAlignment(Qt.AlignTop)
         self.Bsend = QPushButton('发送', self)
 
         self.Bsend.clicked.connect(self.fileChecker)
@@ -79,11 +82,11 @@ class ClientWindow(QMainWindow):
         grid = QGridLayout()
         grid.setSpacing(30)
         grid.addWidget(self.Bselector, 1, 1, 1, 1)
-        grid.addWidget(self.Lfile, 2, 1)
+        grid.addWidget(self.Lfile_empty, 2, 1)
         grid.addWidget(self.Bsend, 3, 1, 1, 1)
         widget.setLayout(grid)
         
-        self.setWindowTitle('FileTransfer')       
+        self.setWindowTitle('FileTransfer')
         self.show()
         
     # 选择要发送的文件且显示文件名列表
@@ -91,20 +94,23 @@ class ClientWindow(QMainWindow):
         self.settings.beginGroup('Misc')
         setting_path_history = self.settings.value('path_history', '.')
         fname = QFileDialog.getOpenFileNames(self, '请选择文件', setting_path_history)
-        flist = ''
+        # 做排列文件需要的组件列表
         if fname[0]:
             for f in fname[0]:
-                flist += os.path.split(f)[1] + '\n'
-                file.append(f)
-            flist = flist[:-1]
-            self.Lfile.setText(flist)
+                btn = QPushButton(self)
+                label = QLabel(os.path.split(f)[1])
+                self.Bcancel.append(btn)
+                self.Lfile.append(label)
+                self.file.append(f)
             self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
         self.settings.sync()
         self.settings.endGroup()
+        # 排列各组件
+        
     
     # 测试有没有选中文件
     def fileChecker(self):
-        if not file:
+        if not self.file:
             msgBox = QMessageBox()
             msgBox.setWindowTitle('错误')
             msgBox.setIcon(QMessageBox.Warning)
@@ -112,9 +118,15 @@ class ClientWindow(QMainWindow):
             msgBox.addButton('确定', QMessageBox.AcceptRole)
             msgBox.exec()
         else:
-            sender = Process(target=clientudp.thread_starter, args=(file_at_same_time, file, host))
+            self.settings.beginGroup('TransSetting')
+            setting_file_at_same_time = int(self.settings.value('file_at_same_time', 2))
+            self.settings.endGroup()
+            self.settings.beginGroup('NetSetting')
+            setting_host = self.settings.value('host', '127.0.0.1')
+            setting_port = int(self.settings.value('port', 12345))
+            self.settings.endGroup()
+            sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, self.file, setting_file_at_same_time))
             sender.start()
-            #sender.join()
     
     def netSettingDialog(self):
         self.netsetting = NetDialog()
@@ -152,7 +164,7 @@ class NetDialog(QWidget):
         self.settings.beginGroup('NetSetting')
         self.Lip = QLabel('服务器IP')
         self.Eip = QLineEdit(self)
-        setting_host = self.settings.value('host', '0.0.0.0')
+        setting_host = self.settings.value('host', '127.0.0.1')
         self.Eip.setText(setting_host)
         self.Lport = QLabel('端口号(1024-65535)')
         self.Sport = QSpinBox(self)
@@ -241,7 +253,6 @@ class TransDialog(QWidget):
             self.close()
 
 if __name__ == '__main__':
-    file = []
     error = []
     app = QApplication(sys.argv)
     window = ClientWindow()
