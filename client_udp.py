@@ -7,7 +7,7 @@ import os, threading, json, asyncio, hashlib, random
 file = os.listdir('send')
 file_at_same_time = 2
 error = []
-ip = '192.168.1.3'
+ip = '192.168.1.4'
 
 class FilePart:
     def __init__(self, name, size, part, all, data):

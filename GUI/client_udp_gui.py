@@ -3,17 +3,18 @@
 UDP客户端GUI版
 改进1：添加文件进度条；
 改进2：文件传输完成后提示完成；
-改进3：添加时不清除已添加，有按钮可清除；
+解决3：添加时不清除已添加，有按钮可清除；
 改进4：MD5检查错误的文件提示；
 解决5：选择文件时记住上次位置；
 解决6：按照屏幕分辨率动态设置窗口尺寸；
+改进7：可选是否成功传完后删除原文件；
 '''
-import os, sys
+import os, sys, functools
 import clientudp
 from multiprocessing import Process
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QRegExp
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QWidget, QDesktopWidget, QGridLayout, QFrame, QMainWindow, QApplication, QSpinBox
+from PyQt5.QtWidgets import QWidget, QDesktopWidget, QGridLayout, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSpinBox
 from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox
 
 class FilePart:
@@ -77,14 +78,18 @@ class ClientWindow(QMainWindow):
         self.Bsend.clicked.connect(self.fileChecker)
         
         # 设置布局
-        widget = QWidget()
-        self.setCentralWidget(widget)
-        grid = QGridLayout()
-        grid.setSpacing(30)
-        grid.addWidget(self.Bselector, 1, 1, 1, 1)
-        grid.addWidget(self.Lfile_empty, 2, 1)
-        grid.addWidget(self.Bsend, 3, 1, 1, 1)
-        widget.setLayout(grid)
+        self.widget = QWidget()
+        self.setCentralWidget(self.widget)
+        self.grid = QGridLayout()
+        self.grid.setSpacing(30)
+        self.grid.addWidget(self.Bselector, 1, 1, 1, 1)
+        self.grid.addWidget(self.Lfile_empty, 2, 1)
+        self.grid.addWidget(self.Bsend, 3, 1, 1, 1)
+        self.widget.setLayout(self.grid)
+        # 文件列表用
+        self.form = QFormLayout()
+        self.form.setSpacing(0)
+        self.grid.addLayout(self.form, 2, 1)
         
         self.setWindowTitle('FileTransfer')
         self.show()
@@ -96,18 +101,28 @@ class ClientWindow(QMainWindow):
         fname = QFileDialog.getOpenFileNames(self, '请选择文件', setting_path_history)
         # 做排列文件需要的组件列表
         if fname[0]:
+            self.Lfile_empty.hide()
             for f in fname[0]:
-                btn = QPushButton(self)
-                label = QLabel(os.path.split(f)[1])
-                self.Bcancel.append(btn)
-                self.Lfile.append(label)
-                self.file.append(f)
+                if f not in self.file:
+                    btn = QPushButton(self)
+                    # 显示用的文件名需要缩短：前7字符后7字符+扩展名（用位计算长度）
+                    label = QLabel(os.path.split(f)[1])
+                    self.file.append(f)
+                    btn.clicked.connect(functools.partial(self.del_file, f))
+                    self.form.addRow(btn, label)
             self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
         self.settings.sync()
         self.settings.endGroup()
-        # 排列各组件
         
-    
+    def del_file(self, name):
+        index = self.file.index(name)
+        self.form.removeRow(index)
+        self.file.pop(index)
+        if not self.file:
+            self.Lfile_empty.show()
+        else:
+            self.Lfile_empty.hide()
+        
     # 测试有没有选中文件
     def fileChecker(self):
         if not self.file:
@@ -159,7 +174,7 @@ class NetDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width/6.4, self.height/7.2)
+        self.resize(self.width/7.68, self.height/10.8)
         
         self.settings.beginGroup('NetSetting')
         self.Lip = QLabel('服务器IP')
@@ -179,15 +194,18 @@ class NetDialog(QWidget):
         self.Bconfirm.clicked.connect(self.store)
         self.Bcancel.clicked.connect(self.close)
         
-        grid = QGridLayout()
-        grid.setSpacing(30)
-        grid.addWidget(self.Lip, 1, 1)
-        grid.addWidget(self.Eip, 1, 2)
-        grid.addWidget(self.Lport, 2, 1)
-        grid.addWidget(self.Sport, 2, 2)
-        grid.addWidget(self.Bconfirm, 3, 1)
-        grid.addWidget(self.Bcancel, 3, 2)
-        self.setLayout(grid)
+        # 窗口布局
+        form = QFormLayout()
+        form.setSpacing(30)
+        form.addRow(self.Lip, self.Eip)
+        form.addRow(self.Lport, self.Sport)
+        hbox = QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addWidget(self.Bconfirm)
+        hbox.addWidget(self.Bcancel)
+        hbox.addStretch(1)
+        form.addRow(hbox)
+        self.setLayout(form)
         
         self.setWindowTitle('网络设置')
     
@@ -214,7 +232,7 @@ class TransDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width/6.4, self.height/12)
+        self.resize(self.width/8.5, 0)
         
         self.settings.beginGroup('TransSetting')
         self.Lfile_num = QLabel('同时传送的文件数(1-3)')
@@ -231,13 +249,17 @@ class TransDialog(QWidget):
         self.Bconfirm.clicked.connect(self.store)
         self.Bcancel.clicked.connect(self.close)
         
-        grid = QGridLayout()
-        grid.setSpacing(30)
-        grid.addWidget(self.Lfile_num, 1, 1)
-        grid.addWidget(self.Sfile_num, 1, 2)
-        grid.addWidget(self.Bconfirm, 2, 1)
-        grid.addWidget(self.Bcancel, 2, 2)
-        self.setLayout(grid)
+        # 窗口布局
+        form = QFormLayout()
+        form.setSpacing(30)
+        form.addRow(self.Lfile_num, self.Sfile_num)
+        hbox = QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addWidget(self.Bconfirm)
+        hbox.addWidget(self.Bcancel)
+        hbox.addStretch(1)
+        form.addRow(hbox)
+        self.setLayout(form)
         
         self.setWindowTitle('传输设置')
     
