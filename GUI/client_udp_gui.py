@@ -13,9 +13,9 @@ import os, sys, functools
 import clientudp
 from multiprocessing import Process
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QRegExp
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QWidget, QDesktopWidget, QGridLayout, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSpinBox
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox
+from PyQt5.QtGui import QFont, QFontMetrics, QIcon
+from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSizePolicy
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox, QToolTip, QScrollArea, QSpinBox
 
 class FilePart:
     def __init__(self, name, size, part, all, data):
@@ -29,8 +29,6 @@ class ClientWindow(QMainWindow):
     '''Qt5窗体类'''
     def __init__(self):
         self.file = []
-        self.Bcancel = []
-        self.Lfile = []
         super().__init__()
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
         self.initUI()
@@ -42,6 +40,7 @@ class ClientWindow(QMainWindow):
         self.height = self.resolution.height()
         self.width = self.resolution.width()
         self.resize(self.width/6.4, self.height/2.7)
+        self.setMinimumWidth(self.width/7.68)
         self.center()
         
         # 添加菜单栏
@@ -70,26 +69,35 @@ class ClientWindow(QMainWindow):
 
         self.Bselector = QPushButton('选择文件', self)
         flist = self.Bselector.clicked.connect(self.fileDialog)
-        # 文件为空时的控件
-        self.Lfile_empty = (QLabel('未选中文件'))
+                                  
+        self.Lfile_empty = QLabel('未选中文件')
         self.Lfile_empty.setAlignment(Qt.AlignTop)
         self.Bsend = QPushButton('发送', self)
-
         self.Bsend.clicked.connect(self.fileChecker)
         
         # 设置布局
         self.widget = QWidget()
         self.setCentralWidget(self.widget)
-        self.grid = QGridLayout()
-        self.grid.setSpacing(30)
-        self.grid.addWidget(self.Bselector, 1, 1, 1, 1)
-        self.grid.addWidget(self.Lfile_empty, 2, 1)
-        self.grid.addWidget(self.Bsend, 3, 1, 1, 1)
-        self.widget.setLayout(self.grid)
-        # 文件列表用
+        self.vbox = QVBoxLayout()
+        self.vbox.setSpacing(30)
+        self.vbox.addWidget(self.Bselector)
+        
+        self.file_widget = QWidget()
+        self.scroll_vbox = QVBoxLayout()
+        self.scroll_vbox.addWidget(self.Lfile_empty)
+                         
         self.form = QFormLayout()
         self.form.setSpacing(0)
-        self.grid.addLayout(self.form, 2, 1)
+        self.scroll_vbox.addLayout(self.form)
+        self.scroll_vbox.setContentsMargins(8,8,8,8)
+        self.file_widget.setLayout(self.scroll_vbox)
+        self.scroll = QScrollArea()
+        self.scroll.setWidget(self.file_widget)
+        self.scroll.setWidgetResizable(True)
+        
+        self.vbox.addWidget(self.scroll)
+        self.vbox.addWidget(self.Bsend)
+        self.widget.setLayout(self.vbox)
         
         self.setWindowTitle('FileTransfer')
         self.show()
@@ -104,9 +112,10 @@ class ClientWindow(QMainWindow):
             self.Lfile_empty.hide()
             for f in fname[0]:
                 if f not in self.file:
-                    btn = QPushButton(self)
-                    # 显示用的文件名需要缩短：前7字符后7字符+扩展名（用位计算长度）
-                    label = QLabel(os.path.split(f)[1])
+                    btn = QPushButton(QIcon('cancel.png'), '', self)
+                    btn.setFlat(True)
+                    label = QLabel(self.shorten_filename(os.path.split(f)[1], self.geometry().width()))
+                    label.setToolTip(os.path.split(f)[1])
                     self.file.append(f)
                     btn.clicked.connect(functools.partial(self.del_file, f))
                     self.form.addRow(btn, label)
@@ -114,6 +123,15 @@ class ClientWindow(QMainWindow):
         self.settings.sync()
         self.settings.endGroup()
         
+    # 文件名宽度大于指定宽度时缩短
+    def shorten_filename(self, name, width):
+        metrics = QFontMetrics(self.font())
+        if metrics.width(name) > width - 180:
+            for i in range(12, len(name)):
+                if metrics.width(name[:i]) > width - 200:
+                    return name[:i] + '...'
+        return name
+      
     def del_file(self, name):
         index = self.file.index(name)
         self.form.removeRow(index)
@@ -162,6 +180,13 @@ class ClientWindow(QMainWindow):
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
             self.close()
+    
+    # 随窗口宽度调整截断文件名
+    def resizeEvent(self, event):
+        for i in range(self.form.rowCount()):
+            form_label = self.form.itemAt(i, QFormLayout.FieldRole)
+            changed_text = self.shorten_filename(os.path.split(self.file[i])[1], event.size().width())
+            form_label.widget().setText(changed_text)
 
 # 自定义网络设置对话框
 class NetDialog(QWidget):
