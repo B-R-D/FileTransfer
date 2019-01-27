@@ -14,8 +14,8 @@ import clientudp
 from multiprocessing import Process
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QRegExp
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon
-from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSizePolicy
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox, QToolTip, QScrollArea, QSpinBox
+from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSizePolicy, QStackedLayout
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox, QToolTip, QScrollArea, QSpinBox, QProgressBar
 
 class FilePart:
     def __init__(self, name, size, part, all, data):
@@ -85,7 +85,7 @@ class ClientWindow(QMainWindow):
         self.file_widget = QWidget()
         self.scroll_vbox = QVBoxLayout()
         self.scroll_vbox.addWidget(self.Lfile_empty)
-                         
+
         self.form = QFormLayout()
         self.form.setSpacing(0)
         self.scroll_vbox.addLayout(self.form)
@@ -114,11 +114,23 @@ class ClientWindow(QMainWindow):
                 if f not in self.file:
                     btn = QPushButton(QIcon('cancel.png'), '', self)
                     btn.setFlat(True)
+                    prog = QProgressBar()
+                    # 不显示百分比
+                    prog.setTextVisible(False)
                     label = QLabel(self.shorten_filename(os.path.split(f)[1], self.geometry().width()))
                     label.setToolTip(os.path.split(f)[1])
+                    
+                    # 堆栈式布局解决标签与进度条重合问题
+                    prog_widget = QWidget()
+                    prog_stack = QStackedLayout()
+                    prog_stack.addWidget(prog)
+                    prog_stack.addWidget(label)
+                    prog_widget.setLayout(prog_stack)
+                    prog_stack.setStackingMode(QStackedLayout.StackAll)
+                    
                     self.file.append(f)
                     btn.clicked.connect(functools.partial(self.del_file, f))
-                    self.form.addRow(btn, label)
+                    self.form.addRow(btn, prog_widget)
             self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
         self.settings.sync()
         self.settings.endGroup()
@@ -184,9 +196,9 @@ class ClientWindow(QMainWindow):
     # 随窗口宽度调整截断文件名
     def resizeEvent(self, event):
         for i in range(self.form.rowCount()):
-            form_label = self.form.itemAt(i, QFormLayout.FieldRole)
+            form_prog = self.form.itemAt(i, QFormLayout.FieldRole)
             changed_text = self.shorten_filename(os.path.split(self.file[i])[1], event.size().width())
-            form_label.widget().setText(changed_text)
+            form_prog.widget().findChild(QLabel).setText(changed_text)
 
 # 自定义网络设置对话框
 class NetDialog(QWidget):

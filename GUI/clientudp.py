@@ -69,6 +69,7 @@ class ClientProtocol:
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get' and message['part'] == self.now.part and message['name'] == self.now.name:
                 self.time_counter.cancel()
+                # 设置进度条的值
                 try:
                     self.file_sender()
                     self.now = next(self.gener)
