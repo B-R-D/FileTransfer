@@ -12,6 +12,7 @@ UDP客户端GUI版
 import os, sys, functools
 import clientudp
 from multiprocessing import Process
+
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QRegExp
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon
 from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSizePolicy, QStackedLayout
@@ -115,8 +116,8 @@ class ClientWindow(QMainWindow):
                     btn = QPushButton(QIcon('cancel.png'), '', self)
                     btn.setFlat(True)
                     prog = QProgressBar()
-                    # 不显示百分比
                     prog.setTextVisible(False)
+                    prog.setRange(0, os.path.getsize(f) // 65000 + 1)
                     label = QLabel(self.shorten_filename(os.path.split(f)[1], self.geometry().width()))
                     label.setToolTip(os.path.split(f)[1])
                     
