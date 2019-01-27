@@ -9,11 +9,11 @@ UDP客户端GUI版
 解决6：按照屏幕分辨率动态设置窗口尺寸；
 改进7：可选是否成功传完后删除原文件；
 '''
-import os, sys, functools
+import os, sys, functools, queue
 import clientudp
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 
-from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QRegExp
+from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon
 from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSizePolicy, QStackedLayout
 from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox, QToolTip, QScrollArea, QSpinBox, QProgressBar
@@ -25,11 +25,13 @@ class FilePart:
         self.part = part
         self.all = all
         self.data = data
-
+        
 class ClientWindow(QMainWindow):
     '''Qt5窗体类'''
     def __init__(self):
         self.file = []
+        self.prog = []
+        self.que = Queue()
         super().__init__()
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
         self.initUI()
@@ -130,6 +132,7 @@ class ClientWindow(QMainWindow):
                     prog_stack.setStackingMode(QStackedLayout.StackAll)
                     
                     self.file.append(f)
+                    self.prog.append((os.path.split(f)[1], prog))
                     btn.clicked.connect(functools.partial(self.del_file, f))
                     self.form.addRow(btn, prog_widget)
             self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
@@ -144,11 +147,12 @@ class ClientWindow(QMainWindow):
                 if metrics.width(name[:i]) > width - 200:
                     return name[:i] + '...'
         return name
-      
+
     def del_file(self, name):
         index = self.file.index(name)
         self.form.removeRow(index)
         self.file.pop(index)
+        self.prog.pop(index)
         if not self.file:
             self.Lfile_empty.show()
         else:
@@ -171,9 +175,25 @@ class ClientWindow(QMainWindow):
             setting_host = self.settings.value('host', '127.0.0.1')
             setting_port = int(self.settings.value('port', 12345))
             self.settings.endGroup()
-            sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, self.file, setting_file_at_same_time))
+            # 启动传输子进程
+            sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, self.file, setting_file_at_same_time, self.que))
             sender.start()
-    
+            # 启动进度条
+            self.timer = QTimer()
+            self.timer.timeout.connect(self.updateProg)
+            self.timer.start(5)
+            
+    def updateProg(self):
+        try:
+            message = self.que.get(timeout=2)
+            for tup in self.prog:
+                if tup[0] == message['name']:
+                    tup[1].setValue(message['part'] + 1)
+        except queue.Empty:
+            self.timer.stop()
+            del self.timer
+            print('Empty.')
+
     def netSettingDialog(self):
         self.netsetting = NetDialog()
         self.netsetting.show()

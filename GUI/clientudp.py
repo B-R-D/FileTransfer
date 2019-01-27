@@ -5,6 +5,7 @@ UDP客户端，尝试连接服务端。
 '''
 
 import os, threading, random, hashlib, asyncio, json
+from multiprocessing import Queue
 
 class FilePart:
     def __init__(self, name, size, part, all, data):
@@ -34,9 +35,10 @@ def file_spliter(fstream):
 
 class ClientProtocol:
 
-    def __init__(self, gener, path, loop):
+    def __init__(self, gener, path, que, loop):
         self.gener = gener
         self.path = path
+        self.que = que
         self.loop = loop
         self.now = next(gener)
         self.md5 = None
@@ -69,7 +71,8 @@ class ClientProtocol:
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get' and message['part'] == self.now.part and message['name'] == self.now.name:
                 self.time_counter.cancel()
-                # 设置进度条的值
+                # 队列中放入进度条的值
+                self.que.put({'name':message['name'], 'part':message['part']})
                 try:
                     self.file_sender()
                     self.now = next(self.gener)
@@ -116,13 +119,13 @@ class ClientProtocol:
                 md5.update(line)
         self.md5 = md5.hexdigest()
 
-async def main(host, port, path, threading_controller):
+async def main(host, port, path, threading_controller, que):
     '''客户端主函数'''
     threading_controller.acquire()
     loop = asyncio.get_running_loop()
     with open(path, 'rb') as fstream:
         transport, protocol = await loop.create_datagram_endpoint(
-            lambda: ClientProtocol(file_spliter(fstream), fstream.name, loop),
+            lambda: ClientProtocol(file_spliter(fstream), fstream.name, que, loop),
             remote_addr=(host, port))
         try:
             await protocol.on_con_lost
@@ -130,10 +133,10 @@ async def main(host, port, path, threading_controller):
             threading_controller.release()
             transport.close()
 
-def thread_starter(host, port, file, file_at_same_time):
+def thread_starter(host, port, file, file_at_same_time, que):
     '''客户端启动函数'''
     threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
     for path in file:
-        thread_asyncio = threading.Thread(target=asyncio.run, args=(main(host, port, path, threading_controller),))
+        thread_asyncio = threading.Thread(target=asyncio.run, args=(main(host, port, path, threading_controller, que),))
         thread_asyncio.start()
     thread_asyncio.join()
