@@ -1,13 +1,14 @@
 # coding:utf-8
 '''
 UDP客户端GUI版
-改进1：添加文件进度条；
+解决1：添加文件进度条；
 改进2：文件传输完成后提示完成；
 解决3：添加时不清除已添加，有按钮可清除；
-改进4：MD5检查错误的文件提示；
+改进4：MD5检查错误的文件提示（图标状态变化）；
 解决5：选择文件时记住上次位置；
 解决6：按照屏幕分辨率动态设置窗口尺寸；
 改进7：可选是否成功传完后删除原文件；
+改进8：文件名显示后加文件大小（可从选项切换是否显示）；
 '''
 import os, sys, functools, queue
 import clientudp
@@ -139,7 +140,7 @@ class ClientWindow(QMainWindow):
         self.settings.sync()
         self.settings.endGroup()
         
-    # 文件名宽度大于指定宽度时缩短
+    # 文件名宽度大于指定宽度（不含边框）时缩短
     def shorten_filename(self, name, width):
         metrics = QFontMetrics(self.font())
         if metrics.width(name) > width - 180:
@@ -181,15 +182,26 @@ class ClientWindow(QMainWindow):
             # 启动进度条
             self.timer = QTimer()
             self.timer.timeout.connect(self.updateProg)
-            self.timer.start(5)
+            self.timer.start(10)
             
     def updateProg(self):
         try:
             message = self.que.get(timeout=2)
-            for tup in self.prog:
-                if tup[0] == message['name']:
-                    tup[1].setValue(message['part'] + 1)
+            if message['type'] == 'info':
+                self.timer.stop()
+                del self.timer
+                if message['message'] == 'MD5_passed':
+                    # 图标变绿色对勾
+                    pass
+                elif message['message'] == 'MD5_failed':
+                    # 图标变红色叉
+                    pass
+            elif message['type'] == 'prog':
+                for tup in self.prog:
+                    if tup[0] == message['name']:
+                        tup[1].setValue(message['part'] + 1)
         except queue.Empty:
+            # 避免阻塞，是否可尝试自调用？（退出条件是接收MD5信息，超过一定递归深度抛错退出即发送无响应）
             self.timer.stop()
             del self.timer
             print('Empty.')

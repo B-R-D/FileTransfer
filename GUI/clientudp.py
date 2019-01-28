@@ -61,18 +61,19 @@ class ClientProtocol:
                 self.time_counter.cancel()
                 print('\nTransmission complete.')
             elif message['data'] == 'MD5_passed':
+                self.que.put({'type':'info', 'name':message['name'], 'message':'MD5_passed'})
                 self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
                 self.transport.close()
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
-                #error.append(message['name'])
+                self.que.put({'type':'info', 'name':message['name'], 'message':'MD5_failed'})
                 self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
                 self.transport.close()
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get' and message['part'] == self.now.part and message['name'] == self.now.name:
                 self.time_counter.cancel()
                 # 队列中放入进度条的值
-                self.que.put({'name':message['name'], 'part':message['part']})
+                self.que.put({'type':'prog', 'name':message['name'], 'part':message['part']})
                 try:
                     self.file_sender()
                     self.now = next(self.gener)
@@ -109,7 +110,7 @@ class ClientProtocol:
         '''
         self.time_counter.cancel()
         self.transport.sendto(message)
-        self.time_counter = self.loop.call_later(random.random() + 0.5, self.message_sender, message)
+        self.time_counter = self.loop.call_later(random.random(), self.message_sender, message)
     
     def md5_gener(self):
         '''计算MD5值'''
