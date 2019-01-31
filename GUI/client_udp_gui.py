@@ -183,12 +183,12 @@ class ClientWindow(QMainWindow):
             # 启动进度条
             self.timer = QTimer()
             self.timer.timeout.connect(self.updateProg)
-            self.timer.start(7)
+            self.timer.start(5)
             
     def updateProg(self):
-        # 需要一个安全关闭定时器的方案
+        # 需要一个安全退出的方案而不能通过超时（完成一个文件pop一个，为空则退出）
         try:
-            message = self.que.get(timeout=2)
+            message = self.que.get(timeout=5)
             if message['type'] == 'info':
                 if message['message'] == 'MD5_passed':
                     # 图标变绿色对勾
