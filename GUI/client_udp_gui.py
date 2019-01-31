@@ -9,8 +9,9 @@ UDP客户端GUI版
 解决6：按照屏幕分辨率动态设置窗口尺寸；
 改进7：可选是否成功传完后删除原文件；
 改进8：文件名显示后加文件大小（可从选项切换是否显示）；
+改进9：表格化视图——可切换简约视图和详细视图；
 '''
-import os, sys, functools, queue
+import os, sys, functools, queue, time
 import clientudp
 from multiprocessing import Process, Queue
 
@@ -60,7 +61,7 @@ class ClientWindow(QMainWindow):
         fileMenu.addAction(exitAct)
         chooseAct.triggered.connect(self.fileDialog)
         sendAct.triggered.connect(self.fileChecker)
-        exitAct.triggered.connect(QCoreApplication.instance().quit)
+        exitAct.triggered.connect(self.safeClose)
         
         settingMenu = menubar.addMenu('设置(&S)')
         netAct = QAction('网络设置(&N)', self)
@@ -116,7 +117,7 @@ class ClientWindow(QMainWindow):
             self.Lfile_empty.hide()
             for f in fname[0]:
                 if f not in self.file:
-                    btn = QPushButton(QIcon('cancel.png'), '', self)
+                    btn = QPushButton(QIcon('pending.png'), '', self)
                     btn.setFlat(True)
                     prog = QProgressBar()
                     prog.setTextVisible(False)
@@ -177,19 +178,18 @@ class ClientWindow(QMainWindow):
             setting_port = int(self.settings.value('port', 12345))
             self.settings.endGroup()
             # 启动传输子进程
-            sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, self.file, setting_file_at_same_time, self.que))
-            sender.start()
+            self.sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, self.file, setting_file_at_same_time, self.que))
+            self.sender.start()
             # 启动进度条
             self.timer = QTimer()
             self.timer.timeout.connect(self.updateProg)
-            self.timer.start(10)
+            self.timer.start(7)
             
     def updateProg(self):
+        # 需要一个安全关闭定时器的方案
         try:
             message = self.que.get(timeout=2)
             if message['type'] == 'info':
-                self.timer.stop()
-                del self.timer
                 if message['message'] == 'MD5_passed':
                     # 图标变绿色对勾
                     pass
@@ -202,6 +202,10 @@ class ClientWindow(QMainWindow):
                         tup[1].setValue(message['part'] + 1)
         except queue.Empty:
             # 避免阻塞，是否可尝试自调用？（退出条件是接收MD5信息，超过一定递归深度抛错退出即发送无响应）
+            self.sender.terminate()
+            while self.sender.is_alive():
+                time.sleep(0.1)
+            self.sender.close()
             self.timer.stop()
             del self.timer
             print('Empty.')
@@ -220,11 +224,21 @@ class ClientWindow(QMainWindow):
         cp = self.resolution.center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())
-
+    
+    def safeClose(self):
+        self.sender.terminate()
+        while self.sender.is_alive():
+            time.sleep(0.1)
+        self.sender.close()
+        self.timer.stop()
+        del self.timer
+        QCoreApplication.instance().quit
+        self.close()
+    
     # 按ESC时关闭窗体
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
-            self.close()
+            self.safeClose()
     
     # 随窗口宽度调整截断文件名
     def resizeEvent(self, event):
