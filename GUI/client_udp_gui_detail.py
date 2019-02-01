@@ -18,21 +18,57 @@ from multiprocessing import Process, Queue
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon
 from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSizePolicy, QStackedLayout
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox, QToolTip, QScrollArea, QSpinBox, QProgressBar
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox, QToolTip, QScrollArea, QSpinBox, QProgressBar, QCheckBox
 
-class FilePart:
-    def __init__(self, name, size, part, all, data):
-        self.name = name
-        self.size = size
-        self.part = part
-        self.all = all
-        self.data = data
+class FileStatus:
+    '''文件信息类'''
+    def __init__(self, path):
+        self._path = path
+        self._name = os.path.split(self._path)[1]
+        self._size = os.path.getsize(self._path)
+        self._all = self._size // 65000 + 1
+        self._status = 'pending'
+        
+        self._button = QPushButton(QIcon(os.path.join('icon', 'pending.png')), '')
+        self._button.setFlat(True)
+        self._prog = QProgressBar()
+        self._prog.setTextVisible(False)
+        self._prog.setRange(0, self._all)
+        self._label = QLabel(self._name)
+        self._label.setToolTip(self._name)
+    
+    def getFileButton(self):
+        return self._button
+    def getFileProg(self):
+        return self._prog
+    def getFileLabel(self):
+        return self._label
+    def getFilePath(self):
+        return self._path
+    def getFileName(self):
+        return self._name
+    def getFileStatus(self):
+        return self._status
+    
+    def setFileStatus(self, new_status):
+        self._status = new_status
+        if self._status == 'pending':
+            self._button.setIcon(QIcon(os.path.join('icon', 'pending.png')))
+            self._button.setToolTip('等待传输')
+        elif self._status == 'error':
+            self._button.setIcon(QIcon(os.path.join('icon', 'error.png')))
+            self._button.setToolTip('传输错误')
+        elif self._status == 'complete':
+            self._button.setIcon(QIcon(os.path.join('icon', 'complete.png')))
+            self._button.setToolTip('传输完成')
+        elif self._status == 'uploading':
+            self._button.setIcon(QIcon(os.path.join('icon', 'uploading.png')))
+            self._button.setToolTip('传送中')
         
 class ClientWindow(QMainWindow):
     '''Qt5窗体类'''
     def __init__(self):
-        self.file = []
-        self.prog = []
+        self.files = []
         self.que = Queue()
         super().__init__()
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
@@ -66,11 +102,14 @@ class ClientWindow(QMainWindow):
         settingMenu = menubar.addMenu('设置(&S)')
         netAct = QAction('网络设置(&N)', self)
         fileAct = QAction('传输设置(&F)', self)
+        uiAct = QAction('界面设置(&U)', self)
         
         settingMenu.addAction(netAct)
         settingMenu.addAction(fileAct)
+        settingMenu.addAction(uiAct)
         netAct.triggered.connect(self.netSettingDialog)
         fileAct.triggered.connect(self.fileSettingDialog)
+        uiAct.triggered.connect(self.uiSettingDialog)
 
         self.Bselector = QPushButton('选择文件', self)
         flist = self.Bselector.clicked.connect(self.fileDialog)
@@ -107,39 +146,31 @@ class ClientWindow(QMainWindow):
         self.setWindowTitle('FileTransfer')
         self.show()
         
-    # 选择要发送的文件且显示文件名列表
+    # 选择要发送的文件且做出内置文件实例列表
     def fileDialog(self):
         self.settings.beginGroup('Misc')
         setting_path_history = self.settings.value('path_history', '.')
+        self.settings.endGroup()
         fname = QFileDialog.getOpenFileNames(self, '请选择文件', setting_path_history)
         # 做排列文件需要的组件列表
         if fname[0]:
+            path_list = [inst.getFilePath() for inst in self.files]
+            for path in fname[0]:
+                if path not in path_list:
+                    self.files.append(FileStatus(path))
             self.Lfile_empty.hide()
-            for f in fname[0]:
-                if f not in self.file:
-                    btn = QPushButton(QIcon('icon/pending.png'), '', self)
-                    btn.setFlat(True)
-                    prog = QProgressBar()
-                    prog.setTextVisible(False)
-                    prog.setRange(0, os.path.getsize(f) // 65000 + 1)
-                    label = QLabel(self.shorten_filename(os.path.split(f)[1], self.geometry().width()))
-                    label.setToolTip(os.path.split(f)[1])
-                    
-                    # 堆栈式布局解决标签与进度条重合问题
-                    prog_widget = QWidget()
-                    prog_stack = QStackedLayout()
-                    prog_stack.addWidget(prog)
-                    prog_stack.addWidget(label)
-                    prog_widget.setLayout(prog_stack)
-                    prog_stack.setStackingMode(QStackedLayout.StackAll)
-                    
-                    self.file.append(f)
-                    self.prog.append((os.path.split(f)[1], prog))
-                    btn.clicked.connect(functools.partial(self.del_file, f))
-                    self.form.addRow(btn, prog_widget)
+            # 从设置中切换布局（待完善）
+            self.settings.beginGroup('UISetting')
+            setting_detail_view = self.settings.value('detail_view', False)
+            self.settings.endGroup()
+            if setting_detail_view:
+                self.simple_viewer()
+            else:
+                pass
+            self.settings.beginGroup('Misc')
             self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
+            self.settings.endGroup()
         self.settings.sync()
-        self.settings.endGroup()
         
     # 文件名宽度大于指定宽度（不含边框）时缩短
     def shorten_filename(self, name, width):
@@ -149,20 +180,59 @@ class ClientWindow(QMainWindow):
                 if metrics.width(name[:i]) > width - 200:
                     return name[:i] + '...'
         return name
+    
+    # 简明视图构建（按设置调用，删除表格布局中所有列后重做列）
+    def simple_viewer(self):
+        for inst in self.files:
+            # 堆栈式布局解决标签与进度条重合问题
+            prog_widget = QWidget()
+            prog_stack = QStackedLayout()
+            prog_stack.addWidget(inst.getFileProg())
+            prog_stack.addWidget(inst.getFileLabel())
+            prog_widget.setLayout(prog_stack)
+            prog_stack.setStackingMode(QStackedLayout.StackAll)
 
-    def del_file(self, name):
-        index = self.file.index(name)
+            inst.getFileButton().clicked.connect(functools.partial(self.del_file, inst))
+            inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.geometry().width()))
+            self.form.addRow(inst.getFileButton(), prog_widget)
+    '''
+    # 详细视图构建
+    def detail_viewer(self):
+        for f in files:
+            if f not in self.file:
+                btn = QPushButton(QIcon('cancel.png'), '', self)
+                btn.setFlat(True)
+                prog = QProgressBar()
+                prog.setTextVisible(False)
+                prog.setRange(0, os.path.getsize(f) // 65000 + 1)
+                label = QLabel(self.shorten_filename(os.path.split(f)[1], self.geometry().width()))
+                label.setToolTip(os.path.split(f)[1])
+                    
+                # 堆栈式布局解决标签与进度条重合问题
+                prog_widget = QWidget()
+                prog_stack = QStackedLayout()
+                prog_stack.addWidget(prog)
+                prog_stack.addWidget(label)
+                prog_widget.setLayout(prog_stack)
+                prog_stack.setStackingMode(QStackedLayout.StackAll)
+                    
+                self.file.append(f)
+                self.prog.append((os.path.split(f)[1], prog))
+                btn.clicked.connect(functools.partial(self.del_file, f))
+                self.form.addRow(btn, prog_widget)
+    '''
+    def del_file(self, inst):
+        index = self.files.index(inst)
         self.form.removeRow(index)
-        self.file.pop(index)
-        self.prog.pop(index)
-        if not self.file:
+        self.files.pop(index)
+        if not self.files:
             self.Lfile_empty.show()
         else:
-            self.Lfile_empty.hide()
-        
+            self.Lfile_empty.hide()   
+
     # 测试有没有选中文件
     def fileChecker(self):
-        if not self.file:
+        if not self.files:
             msgBox = QMessageBox()
             msgBox.setWindowTitle('错误')
             msgBox.setIcon(QMessageBox.Warning)
@@ -178,7 +248,8 @@ class ClientWindow(QMainWindow):
             setting_port = int(self.settings.value('port', 12345))
             self.settings.endGroup()
             # 启动传输子进程
-            self.file_sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, self.file, setting_file_at_same_time, self.que))
+            path_list = [inst.getFilePath() for inst in self.files]
+            self.file_sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.que))
             self.file_sender.start()
             # 启动进度条
             self.timer = QTimer()
@@ -188,7 +259,7 @@ class ClientWindow(QMainWindow):
     def updateProg(self):
         # 需要一个安全退出的方案而不能通过超时（完成一个文件pop一个，为空则退出）
         try:
-            message = self.que.get(timeout=5)
+            message = self.que.get(timeout=2)
             if message['type'] == 'info':
                 if message['message'] == 'MD5_passed':
                     # 图标变绿色对勾
@@ -217,6 +288,10 @@ class ClientWindow(QMainWindow):
     def fileSettingDialog(self):
         self.transsetting = TransDialog()
         self.transsetting.show()
+        
+    def uiSettingDialog(self):
+        self.uisetting = UIDialog()
+        self.uisetting.show()
     
     # 打开窗体时位于屏幕中心
     def center(self):
@@ -241,12 +316,11 @@ class ClientWindow(QMainWindow):
         if k.key() == Qt.Key_Escape:
             self.safeClose()
     
-    # 随窗口宽度调整截断文件名
+    # 跟随显示模式随窗口宽度调整截断文件名
     def resizeEvent(self, event):
-        for i in range(self.form.rowCount()):
-            form_prog = self.form.itemAt(i, QFormLayout.FieldRole)
-            changed_text = self.shorten_filename(os.path.split(self.file[i])[1], event.size().width())
-            form_prog.widget().findChild(QLabel).setText(changed_text)
+        for inst in self.files:
+            changed_text = self.shorten_filename(inst.getFileName(), event.size().width())
+            inst.getFileLabel().setText(changed_text)
 
 # 自定义网络设置对话框
 class NetDialog(QWidget):
@@ -359,6 +433,57 @@ class TransDialog(QWidget):
         if k.key() == Qt.Key_Escape:
             self.close()
 
+# 自定义界面设置对话框
+class UIDialog(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
+        self.initUI()
+
+    def initUI(self):
+        self.resolution = QDesktopWidget().availableGeometry()
+        self.height = self.resolution.height()
+        self.width = self.resolution.width()
+        self.resize(self.width/8.5, 0)
+        
+        self.settings.beginGroup('UISetting')
+        self.Lview = QLabel('启用详细视图')
+        self.Cview = QCheckBox(self)
+        setting_view = bool(self.settings.value('detail_view', False))
+        self.Cview.setChecked(setting_view)
+        self.settings.endGroup()
+        
+        self.Bconfirm = QPushButton('确定', self)
+        self.Bcancel = QPushButton('取消', self)
+        
+        self.Bconfirm.clicked.connect(self.store)
+        self.Bcancel.clicked.connect(self.close)
+        
+        # 窗口布局
+        form = QFormLayout()
+        form.setSpacing(30)
+        form.addRow(self.Lview, self.Cview)
+        hbox = QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addWidget(self.Bconfirm)
+        hbox.addWidget(self.Bcancel)
+        hbox.addStretch(1)
+        form.addRow(hbox)
+        self.setLayout(form)
+        
+        self.setWindowTitle('界面设置')
+    
+    def store(self):
+        self.settings.beginGroup('UISetting')
+        self.settings.setValue('detail_view', self.Cview.isChecked())
+        self.settings.sync()
+        self.settings.endGroup()
+        self.close()
+        
+    def keyPressEvent(self, k):
+        if k.key() == Qt.Key_Escape:
+            self.close()
+            
 if __name__ == '__main__':
     error = []
     app = QApplication(sys.argv)
