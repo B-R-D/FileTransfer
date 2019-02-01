@@ -248,6 +248,8 @@ class ClientWindow(QMainWindow):
             setting_port = int(self.settings.value('port', 12345))
             self.settings.endGroup()
             # 启动传输子进程
+            for inst in self.files:
+                inst.setFileStatus('uploading')
             path_list = [inst.getFilePath() for inst in self.files]
             self.file_sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.que))
             self.file_sender.start()
@@ -259,27 +261,35 @@ class ClientWindow(QMainWindow):
     def updateProg(self):
         # 需要一个安全退出的方案而不能通过超时（完成一个文件pop一个，为空则退出）
         try:
-            message = self.que.get(timeout=2)
+            message = self.que.get(timeout=5)
             if message['type'] == 'info':
                 if message['message'] == 'MD5_passed':
-                    # 图标变绿色对勾
-                    pass
+                    for inst in self.files:
+                        if inst.getFileName() == message['name']:
+                            inst.setFileStatus('complete')
+                            self.files.remove(inst)
                 elif message['message'] == 'MD5_failed':
-                    # 图标变红色叉
-                    pass
+                    for inst in self.files:
+                        if inst.getFileName() == message['name']:
+                            inst.setFileStatus('error')
+                            self.files.remove(inst)
             elif message['type'] == 'prog':
-                for tup in self.prog:
-                    if tup[0] == message['name']:
-                        tup[1].setValue(message['part'] + 1)
+                for inst in self.files:
+                    if inst.getFileName() == message['name']:
+                        inst.getFileProg().setValue(message['part'] + 1)
         except queue.Empty:
-            # 避免阻塞，是否可尝试自调用？（退出条件是接收MD5信息，超过一定递归深度抛错退出即发送无响应）
             self.file_sender.terminate()
             while self.file_sender.is_alive():
                 time.sleep(0.1)
             self.file_sender.close()
             self.timer.stop()
             del self.timer
-            print('Empty.')
+            msgBox = QMessageBox()
+            msgBox.setWindowTitle('错误')
+            msgBox.setIcon(QMessageBox.Warning)
+            msgBox.setText('连接中断，传输失败！')
+            msgBox.addButton('确定', QMessageBox.AcceptRole)
+            msgBox.exec()
 
     def netSettingDialog(self):
         self.netsetting = NetDialog()
