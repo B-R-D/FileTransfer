@@ -74,6 +74,7 @@ class ClientProtocol:
                 self.time_counter.cancel()
                 # 队列中放入进度条的值
                 self.que.put({'type':'prog', 'name':message['name'], 'part':message['part']})
+                print('放入: ', self.que, message['part'])
                 try:
                     self.file_sender()
                     self.now = next(self.gener)
@@ -105,12 +106,12 @@ class ClientProtocol:
     
     def message_sender(self, message):
         '''
-        自带随机秒重发机制的消息回发
+        自带随机秒重发机制的消息回发(至少0.1s)
         注意此处传入的参数必须是打包好的
         '''
         self.time_counter.cancel()
         self.transport.sendto(message)
-        self.time_counter = self.loop.call_later(random.random(), self.message_sender, message)
+        self.time_counter = self.loop.call_later(0.2 + random.random(), self.message_sender, message)
     
     def md5_gener(self):
         '''计算MD5值'''

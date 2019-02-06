@@ -146,7 +146,7 @@ class ClientWindow(QMainWindow):
         self.file_table.horizontalHeader().setVisible(False)
         self.file_table.setShowGrid(False)
         self.file_table.resizeColumnToContents(0)
-        self.file_table.setColumnWidth(1, self.geometry().width() - self.width / 23)
+        self.file_table.setColumnWidth(1, self.geometry().width() - self.width / 15)
         for inst in self.files:
             if inst.getFileName() not in file_name:
                 # 堆栈式布局解决标签与进度条重合问题
@@ -225,7 +225,7 @@ class ClientWindow(QMainWindow):
         '''
         # 决定调整初始的阈值（文字初始离单元格右侧多远时缩短）
         if metrics.width(name) > width - self.width / 64:
-            for i in range(10, len(name)):
+            for i in range(8, len(name)):
                 # 比初始阈值缩短的长度要考虑末尾的...
                 if metrics.width(name[:i]) > width - self.width / 64:
                     return name[:i] + '...'
@@ -299,6 +299,7 @@ class ClientWindow(QMainWindow):
                         msgBox.addButton('确定', QMessageBox.AcceptRole)
                         msgBox.exec()
             elif message['type'] == 'prog':
+                print(message['name'], '设置为：', message['part'] + 1)
                 for inst in self.files:
                     if inst.getFileName() == message['name']:
                         inst.getFileProg().setValue(message['part'] + 1)
@@ -363,7 +364,7 @@ class ClientWindow(QMainWindow):
         for inst in self.files:
             changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
             inst.getFileLabel().setText(changed_text)
-        self.file_table.setColumnWidth(1, event.size().width() - self.width / 23)
+        self.file_table.setColumnWidth(1, event.size().width() - self.width / 15)
 
 # 自定义网络设置对话框
 class NetDialog(QWidget):

@@ -30,17 +30,19 @@ class ServerProtocol:
         if info['type'] == 'message':
             if info['data'] == 'established':
                 # 新建计时器记录
-                self.time_counter[info['name']] = {}
-                self.message_sender({'type':'message','data':'get','name':info['name'],'part':0}, addr)
+                if info['name'] not in self.time_counter:
+                    self.time_counter[info['name']] = {}
+                    self.message_sender({'type':'message','data':'get','name':info['name'],'part':0}, addr)
             elif info['data'] == 'terminated':
                 print('\nConnection terminated successfully.\n')
         elif info['type'] == 'data':
             data = data.split(b'---+++data+++---')[1]
-            if info['part'] == len(self.time_counter[info['name']]) - 1:
+            if info['name'] in self.time_counter and info['part'] == len(self.time_counter[info['name']]) - 1:
                 self.time_counter[info['name']][info['part']].cancel()
+                self.time_counter[info['name']][info['part'] + 1] = None
                 wd = threading.Thread(target=self.write_data, args=(info, data, addr))
                 wd.start()
-                if len(self.time_counter[info['name']]) == info['all']:
+                if len(self.time_counter[info['name']]) - 1 == info['all']:
                     wd.join()
                     self.time_counter.pop(info['name'])
                     checker = threading.Thread(target=self.MD5_checker, args=(info, addr))
@@ -55,9 +57,9 @@ class ServerProtocol:
         '''写入本地数据并回发get消息'''
         with open(info['name'], 'ab') as filedata:
             filedata.write(data)
-        print('{0}(part {1}/{2}) complete.'.format(info['name'], info['part'], info['all']), end='\n')
-        # 非末块则有回送操作
-        if not len(self.time_counter[info['name']]) == info['all']:
+        print('{0}(part {1}/{2}) complete.'.format(info['name'], info['part'] + 1, info['all']), end='\n')
+        # 非末块则有回送操作(这里是用插入新值封住了接收重复块)
+        if not len(self.time_counter[info['name']]) - 1 == info['all']:
             message = {'type':'message','data':'get','name':info['name'],'part':info['part'] + 1}
             self.message_sender(message, addr)
 
