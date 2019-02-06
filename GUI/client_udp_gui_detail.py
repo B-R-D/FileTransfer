@@ -146,7 +146,7 @@ class ClientWindow(QMainWindow):
         self.file_table.horizontalHeader().setVisible(False)
         self.file_table.setShowGrid(False)
         self.file_table.resizeColumnToContents(0)
-        self.file_table.setColumnWidth(1, self.geometry().width() / 1.4)
+        self.file_table.setColumnWidth(1, self.geometry().width() - self.width / 23)
         for inst in self.files:
             if inst.getFileName() not in file_name:
                 # 堆栈式布局解决标签与进度条重合问题
@@ -161,7 +161,6 @@ class ClientWindow(QMainWindow):
                 inst.getFileButton().clicked.connect(functools.partial(self.del_file, inst))
                 self.file_table.setCellWidget(self.files.index(inst), 0, inst.getFileButton())
                 self.file_table.setCellWidget(self.files.index(inst), 1, prog_widget)
-        print(self.geometry().width(), self.file_table.columnWidth(1))
         self.file_table.show()
     '''
     # 详细视图构建
@@ -224,9 +223,11 @@ class ClientWindow(QMainWindow):
                 if metrics.width(name[:i]) > width - 200:
                     return name[:i] + '...'
         '''
-        if metrics.width(name) > width - 30:
-            for i in range(12, len(name)):
-                if metrics.width(name[:i]) > width - 30:
+        # 决定调整初始的阈值（文字初始离单元格右侧多远时缩短）
+        if metrics.width(name) > width - self.width / 64:
+            for i in range(10, len(name)):
+                # 比初始阈值缩短的长度要考虑末尾的...
+                if metrics.width(name[:i]) > width - self.width / 64:
                     return name[:i] + '...'
         return name
     
@@ -357,12 +358,12 @@ class ClientWindow(QMainWindow):
         if k.key() == Qt.Key_Escape:
             self.safeClose()
 
-    # 跟随显示模式随窗口宽度调整截断文件名
+    # 跟随显示模式随列宽调整截断文件名
     def resizeEvent(self, event):
         for inst in self.files:
-            self.file_table.setColumnWidth(1, event.size().width() / 1.4)
             changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
             inst.getFileLabel().setText(changed_text)
+        self.file_table.setColumnWidth(1, event.size().width() - self.width / 23)
 
 # 自定义网络设置对话框
 class NetDialog(QWidget):
