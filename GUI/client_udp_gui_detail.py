@@ -299,7 +299,6 @@ class ClientWindow(QMainWindow):
                         msgBox.addButton('确定', QMessageBox.AcceptRole)
                         msgBox.exec()
             elif message['type'] == 'prog':
-                print(message['name'], '设置为：', message['part'] + 1)
                 for inst in self.files:
                     if inst.getFileName() == message['name']:
                         inst.getFileProg().setValue(message['part'] + 1)

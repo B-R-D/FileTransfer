@@ -63,18 +63,15 @@ class ClientProtocol:
             elif message['data'] == 'MD5_passed':
                 self.que.put({'type':'info', 'name':message['name'], 'message':'MD5_passed'})
                 self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
-                self.transport.close()
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
                 self.que.put({'type':'info', 'name':message['name'], 'message':'MD5_failed'})
                 self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
-                self.transport.close()
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get' and message['part'] == self.now.part and message['name'] == self.now.name:
                 self.time_counter.cancel()
                 # 队列中放入进度条的值
                 self.que.put({'type':'prog', 'name':message['name'], 'part':message['part']})
-                print('放入: ', self.que, message['part'])
                 try:
                     self.file_sender()
                     self.now = next(self.gener)
@@ -87,6 +84,7 @@ class ClientProtocol:
         
     def connection_lost(self, exc):
         print('File:{0}({1}) transmission complete.\n'.format(self.now.name, display_file_length(self.now.size)))
+        self.transport.close()
         self.on_con_lost.set_result(True)
         
     def file_sender(self):
