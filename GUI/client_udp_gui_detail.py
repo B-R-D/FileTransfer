@@ -18,7 +18,7 @@ from multiprocessing import Process, Queue
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QPixmap
 from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QFrame, QMainWindow, QApplication, QSizePolicy, QStackedLayout, QTableWidget
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox, QToolTip, QScrollArea, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QInputDialog, QLineEdit, QAction, QMessageBox, QToolTip, QScrollArea, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView
 
 class FileStatus:
     '''文件信息类'''
@@ -48,6 +48,8 @@ class FileStatus:
         return self._path
     def getFileName(self):
         return self._name
+    def getFileSize(self):
+        return clientudp.display_file_length(self._size)
     def getFileStatus(self):
         return self._status
     
@@ -81,9 +83,16 @@ class ClientWindow(QMainWindow):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width/6.4, self.height/2.7)
+        # 恢复关闭时的窗口尺寸
+        self.settings.beginGroup('Misc')
+        setting_window_size = tuple(self.settings.value('window_size', (self.width/7.68, self.height/10.8)))
+        self.settings.endGroup()
+        self.resize(setting_window_size[0], setting_window_size[1])
         self.setMinimumWidth(self.width/7.68)
-        self.center()
+        # 窗口移至屏幕中央
+        qr = self.frameGeometry()
+        qr.moveCenter(self.resolution.center())
+        self.move(qr.topLeft())
         
         # 添加菜单栏
         menubar = self.menuBar()
@@ -119,10 +128,11 @@ class ClientWindow(QMainWindow):
         self.Bsend = QPushButton('发送', self)
         self.Bsend.clicked.connect(self.fileChecker)
         
-        # 设置布局，按设置详细与否改造
         self.widget = QWidget()
         self.setCentralWidget(self.widget)
         self.file_table = QTableWidget()
+        self.file_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.file_table.hide()
         self.vbox = QVBoxLayout()
         self.vbox.setSpacing(self.height / 70)
         self.vbox.addWidget(self.Bselector)
@@ -130,7 +140,6 @@ class ClientWindow(QMainWindow):
         self.vbox.addWidget(self.Lfile_empty)
         self.vbox.addWidget(self.Bsend)
         self.widget.setLayout(self.vbox)
-        self.file_table.hide()
         
         self.setWindowTitle('FileTransfer')
         self.show()
@@ -143,9 +152,9 @@ class ClientWindow(QMainWindow):
             file_name = []
         self.file_table.setColumnCount(2)
         self.file_table.setRowCount(len(self.files))
-        self.file_table.horizontalHeader().setVisible(False)
         self.file_table.setShowGrid(False)
         self.file_table.resizeColumnToContents(0)
+        self.file_table.horizontalHeader().setVisible(False)
         self.file_table.setColumnWidth(1, self.geometry().width() - self.width / 15)
         for inst in self.files:
             if inst.getFileName() not in file_name:
@@ -162,32 +171,48 @@ class ClientWindow(QMainWindow):
                 self.file_table.setCellWidget(self.files.index(inst), 0, inst.getFileButton())
                 self.file_table.setCellWidget(self.files.index(inst), 1, prog_widget)
         self.file_table.show()
-    '''
-    # 详细视图构建
+
+    # 详细视图构建：包括按钮、进度条、详细分片进度、文件大小、状态
     def detail_viewer(self):
-        for f in files:
-            if f not in self.file:
-                btn = QPushButton(QIcon('cancel.png'), '', self)
-                btn.setFlat(True)
-                prog = QProgressBar()
-                prog.setTextVisible(False)
-                prog.setRange(0, os.path.getsize(f) // 65000 + 1)
-                label = QLabel(self.shorten_filename(os.path.split(f)[1], self.geometry().width()))
-                label.setToolTip(os.path.split(f)[1])
-                
+        if self.file_table.rowCount():
+            file_name = [self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() for i in range(self.file_table.rowCount())]
+        else:
+            file_name = []
+        self.file_table.setColumnCount(5)
+        self.file_table.setRowCount(len(self.files))
+        for inst in self.files:
+            if inst.getFileName() not in file_name:
                 # 堆栈式布局解决标签与进度条重合问题
                 prog_widget = QWidget()
                 prog_stack = QStackedLayout()
-                prog_stack.addWidget(prog)
-                prog_stack.addWidget(label)
-                prog_widget.setLayout(prog_stack)
+                prog_stack.addWidget(inst.getFileProg())
+                prog_stack.addWidget(inst.getFileLabel())
                 prog_stack.setStackingMode(QStackedLayout.StackAll)
+                prog_widget.setLayout(prog_stack)
 
-                self.file.append(f)
-                self.prog.append((os.path.split(f)[1], prog))
-                btn.clicked.connect(functools.partial(self.del_file, f))
-                self.form.addRow(btn, prog_widget)
-    '''
+                #inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1)))
+                inst.getFileButton().clicked.connect(functools.partial(self.del_file, inst))
+                self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
+                index = self.files.index(inst)
+
+                file_prog = QTableWidgetItem('0 %')
+                file_prog.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+                file_prog.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                file_size = QTableWidgetItem(inst.getFileSize())
+                file_size.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                file_size.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+                file_status = QTableWidgetItem(inst.getFileButton().toolTip())
+                file_status.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                file_status.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+
+                self.file_table.setCellWidget(index, 0, inst.getFileButton())
+                self.file_table.setCellWidget(index, 1, prog_widget)
+                self.file_table.setItem(index, 2, file_prog)
+                self.file_table.setItem(index, 3, file_size)
+                self.file_table.setItem(index, 4, file_status)
+        self.file_table.resizeColumnsToContents()
+        self.file_table.show()
+
     # 选择要发送的文件且做出内置文件实例列表
     def fileDialog(self):
         self.settings.beginGroup('Misc')
@@ -208,7 +233,7 @@ class ClientWindow(QMainWindow):
             if not setting_detail_view:
                 self.simple_viewer()
             else:
-                pass
+                self.detail_viewer()
             self.settings.beginGroup('Misc')
             self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
             self.settings.endGroup()
@@ -217,12 +242,6 @@ class ClientWindow(QMainWindow):
     # 文件名宽度大于指定宽度（不含边框）时缩短
     def shorten_filename(self, name, width):
         metrics = QFontMetrics(self.font())
-        '''
-        if metrics.width(name) > width - 180:
-            for i in range(12, len(name)):
-                if metrics.width(name[:i]) > width - 200:
-                    return name[:i] + '...'
-        '''
         # 决定调整初始的阈值（文字初始离单元格右侧多远时缩短）
         if metrics.width(name) > width - self.width / 64:
             for i in range(8, len(name)):
@@ -319,6 +338,10 @@ class ClientWindow(QMainWindow):
         return inst_list
 
     def safeClose(self):
+        # 记住关闭时的窗口尺寸
+        self.settings.beginGroup('Misc')
+        self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
+        self.settings.endGroup()
         try:
             self.file_sender.terminate()
             while self.file_sender.is_alive():
@@ -346,13 +369,10 @@ class ClientWindow(QMainWindow):
         self.uisetting = UIDialog()
         self.uisetting.show()
 
-    # 打开窗体时位于屏幕中心
-    def center(self):
-        qr = self.frameGeometry()
-        cp = self.resolution.center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
-    
+    # 按x关闭窗体的行为
+    def closeEvent(self, event):
+        self.safeClose()
+
     # 按ESC时关闭窗体
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
@@ -360,10 +380,14 @@ class ClientWindow(QMainWindow):
 
     # 跟随显示模式随列宽调整截断文件名
     def resizeEvent(self, event):
-        for inst in self.files:
-            changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
-            inst.getFileLabel().setText(changed_text)
-        self.file_table.setColumnWidth(1, event.size().width() - self.width / 15)
+        self.settings.beginGroup('UISetting')
+        setting_detail_view = int(self.settings.value('detail_view', False))
+        self.settings.endGroup()
+        if not setting_detail_view:
+            for inst in self.files:
+                changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
+                inst.getFileLabel().setText(changed_text)
+            self.file_table.setColumnWidth(1, event.size().width() - self.width / 15)
 
 # 自定义网络设置对话框
 class NetDialog(QWidget):
@@ -373,6 +397,7 @@ class NetDialog(QWidget):
         self.initUI()
 
     def initUI(self):
+        self.setWindowModality(Qt.ApplicationModal)
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
@@ -431,6 +456,7 @@ class TransDialog(QWidget):
         self.initUI()
 
     def initUI(self):
+        self.setWindowModality(Qt.ApplicationModal)
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
@@ -484,6 +510,7 @@ class UIDialog(QWidget):
         self.initUI()
 
     def initUI(self):
+        self.setWindowModality(Qt.ApplicationModal)
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
