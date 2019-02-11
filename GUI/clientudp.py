@@ -35,10 +35,11 @@ def file_spliter(fstream):
 
 class ClientProtocol:
 
-    def __init__(self, gener, path, que, loop):
+    def __init__(self, gener, path, que, tc, loop):
         self.gener = gener
         self.path = path
         self.que = que
+        self.tc = tc
         self.loop = loop
         self.now = next(gener)
         self.md5 = None
@@ -63,10 +64,14 @@ class ClientProtocol:
             elif message['data'] == 'MD5_passed':
                 self.que.put({'type':'info', 'name':message['name'], 'message':'MD5_passed'})
                 self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
+                #self.transport.close()
+                self.tc.release()
                 print('\nMD5 checking passed.')
             elif message['data'] == 'MD5_failed':
                 self.que.put({'type':'info', 'name':message['name'], 'message':'MD5_failed'})
                 self.transport.sendto(json.dumps({'type':'message','data':'terminated'}).encode())
+                #self.transport.close()
+                self.tc.release()
                 print('\nMD5 checking failed.')
             elif message['data'] == 'get' and message['part'] == self.now.part and message['name'] == self.now.name:
                 self.time_counter.cancel()
@@ -84,7 +89,6 @@ class ClientProtocol:
         
     def connection_lost(self, exc):
         print('File:{0}({1}) transmission complete.\n'.format(self.now.name, display_file_length(self.now.size)))
-        self.transport.close()
         self.on_con_lost.set_result(True)
         
     def file_sender(self):
@@ -125,12 +129,12 @@ async def main(host, port, path, threading_controller, que):
     loop = asyncio.get_running_loop()
     with open(path, 'rb') as fstream:
         transport, protocol = await loop.create_datagram_endpoint(
-            lambda: ClientProtocol(file_spliter(fstream), fstream.name, que, loop),
+            lambda: ClientProtocol(file_spliter(fstream), fstream.name, que, threading_controller, loop),
             remote_addr=(host, port))
         try:
             await protocol.on_con_lost
         finally:
-            threading_controller.release()
+            #threading_controller.release()
             transport.close()
 
 def thread_starter(host, port, file, file_at_same_time, que):
