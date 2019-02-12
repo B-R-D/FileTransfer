@@ -92,7 +92,7 @@ class ClientWindow(QMainWindow):
         self.width = self.resolution.width()
         # 恢复上次关闭时的窗口尺寸
         self.settings.beginGroup('Misc')
-        setting_window_size = self.settings.value('window_size', (self.width/6.4, self.height/2.7))
+        setting_window_size = self.settings.value('window_size', (self.width / 6.4, self.height / 2.7))
         self.settings.endGroup()
         self.resize(setting_window_size[0], setting_window_size[1])
         # 在屏幕中央打开窗口
@@ -155,9 +155,9 @@ class ClientWindow(QMainWindow):
         self.setting_detail_view = int(self.settings.value('detail_view', False))
         self.settings.endGroup()
         if not self.setting_detail_view:
-            self.setMinimumWidth(self.width/7.68)
+            self.setMinimumWidth(self.width / 7.68)
         else:
-            self.setMinimumWidth(self.width/6.5)
+            self.setMinimumWidth(self.width / 6.18)
         
         self.setWindowTitle('FileTransfer')
         self.show()
@@ -323,14 +323,14 @@ class ClientWindow(QMainWindow):
                     self.file_sender.close()
                     self.timer.stop()
                     if not self.findInstanceByStatus('error'):
-                        msgBox = QMessageBox()
+                        msgBox = QMessageBox(self)
                         msgBox.setWindowTitle('成功')
                         msgBox.setIcon(QMessageBox.Information)
                         msgBox.setText('传输成功完成！')
                         msgBox.addButton('确定', QMessageBox.AcceptRole)
                         msgBox.exec()
                     else:
-                        msgBox = QMessageBox()
+                        msgBox = QMessageBox(self)
                         msgBox.setWindowTitle('信息')
                         msgBox.setIcon(QMessageBox.Warning)
                         msgBox.setText('传输完成，但有文件传输出错！')
@@ -466,7 +466,7 @@ class NetDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width/7.68, self.height/10.8)
+        self.resize(self.width / 7.68, self.height / 10.8)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
@@ -532,7 +532,7 @@ class TransDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width/8.5, 0)
+        self.resize(self.width / 8.5, 0)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
@@ -600,7 +600,7 @@ class UIDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width/8.5, 0)
+        self.resize(self.width / 8.5, 0)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
