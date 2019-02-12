@@ -9,7 +9,7 @@ import clientudp
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon
 from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView
 
 class FileStatus:
     '''
@@ -95,7 +95,6 @@ class ClientWindow(QMainWindow):
         setting_window_size = self.settings.value('window_size', (self.width/6.4, self.height/2.7))
         self.settings.endGroup()
         self.resize(setting_window_size[0], setting_window_size[1])
-        self.setMinimumWidth(self.width/7.68)
         # 在屏幕中央打开窗口
         qr = self.frameGeometry()
         qr.moveCenter(self.resolution.center())
@@ -151,10 +150,14 @@ class ClientWindow(QMainWindow):
         self.vbox.addWidget(self.Bsend)
         self.widget.setLayout(self.vbox)
 
-        # 从设置中读取视图设定
+        # 从设置中读取视图设定并设定窗口最小值
         self.settings.beginGroup('UISetting')
         self.setting_detail_view = int(self.settings.value('detail_view', False))
         self.settings.endGroup()
+        if not self.setting_detail_view:
+            self.setMinimumWidth(self.width/7.68)
+        else:
+            self.setMinimumWidth(self.width/6.5)
         
         self.setWindowTitle('FileTransfer')
         self.show()
@@ -168,13 +171,13 @@ class ClientWindow(QMainWindow):
         else:
             file_name = []
 
-        # 设置简明视图样式：无框线，水平抬头不可见，按钮列自适应，文件名列宽度自调整
+        # 设置简明视图样式：无框线，水平抬头不可见，按钮列自适应，文件名列宽自适应留白
         self.file_table.setColumnCount(2)
         self.file_table.setRowCount(len(self.files))
         self.file_table.setShowGrid(False)
         self.file_table.horizontalHeader().setVisible(False)
+        self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.file_table.resizeColumnToContents(0)
-        self.file_table.setColumnWidth(1, self.geometry().width() - self.width / 15)
 
         # 针对新选择的文件在列表中增加新增文件的行
         for inst in self.files:
@@ -186,12 +189,14 @@ class ClientWindow(QMainWindow):
                 prog_stack.setStackingMode(QStackedLayout.StackAll)
                 prog_widget.setLayout(prog_stack)
 
-                # 就单元格宽度截断显示的文件名，绑定按钮事件
-                inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1)))
+                inst.getFileLabel().setText(inst.getFileName())
                 inst.getFileButton().clicked.connect(functools.partial(self.del_file, inst))
                 self.file_table.setCellWidget(self.files.index(inst), 0, inst.getFileButton())
                 self.file_table.setCellWidget(self.files.index(inst), 1, prog_widget)
         self.file_table.show()
+        # 表格显示后截断文件名
+        for inst in self.files:
+            inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1)))
 
     def detail_viewer(self):
         '''详细视图构建：包括按钮、进度条、详细分片进度、文件大小、状态'''
@@ -201,6 +206,7 @@ class ClientWindow(QMainWindow):
             file_name = []
         self.file_table.setColumnCount(5)
         self.file_table.setRowCount(len(self.files))
+        self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
         for inst in self.files:
             if inst.getFileName() not in file_name:
@@ -210,6 +216,7 @@ class ClientWindow(QMainWindow):
                 prog_stack.addWidget(inst.getFileLabel())
                 prog_stack.setStackingMode(QStackedLayout.StackAll)
                 prog_widget.setLayout(prog_stack)
+                inst.getFileLabel().setText(inst.getFileName())
                 inst.getFileButton().clicked.connect(functools.partial(self.del_file, inst))
 
                 # 设置各单元格样式：不可选中且VH居中
@@ -232,15 +239,16 @@ class ClientWindow(QMainWindow):
                 self.file_table.setItem(index, 4, file_status)
         self.file_table.resizeColumnsToContents()
         self.file_table.show()
+        for inst in self.files:
+            inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1)))
 
     def shorten_filename(self, name, width):
         '''根据给定的宽度截断文件名并添加...，返回截断后的文件名'''
-        # 比例数字决定调整初始的阈值（文字初始总长离单元格右侧多远时缩短）
         # 从第n个字符开始计算长度并添加...
         metrics = QFontMetrics(self.font())
-        if metrics.width(name) > width - self.width / 64:
-            for i in range(8, len(name)):
-                if metrics.width(name[:i]) > width - self.width / 64:
+        if metrics.width(name) > width - self.width / 128:
+            for i in range(4, len(name)):
+                if metrics.width(name[:i]) > width - self.width / 128:
                     return name[:i] + '...'
         return name
     
@@ -436,13 +444,11 @@ class ClientWindow(QMainWindow):
             self.safeClose()
 
     def resizeEvent(self, event):
-        '''调整窗口尺寸时触发，仅对简明视图有效'''
-        if not self.setting_detail_view:
-            self.file_table.setColumnWidth(1, event.size().width() - self.width / 15)
-            for inst in self.files:
-                # 根据表格列宽调整截断文件名
-                changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
-                inst.getFileLabel().setText(changed_text)
+        '''调整窗口尺寸时触发'''
+        for inst in self.files:
+            # 根据表格列宽调整截断文件名
+            changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
+            inst.getFileLabel().setText(changed_text)
 
 class NetDialog(QWidget):
     '''
