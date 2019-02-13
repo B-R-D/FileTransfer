@@ -17,7 +17,8 @@ def display_file_length(file_size):
         return '{0:.1f}GB'.format(file_size/1073741824)
 
 class ServerProtocol:
-    def __init__(self, que, loop):
+    def __init__(self, dir, que, loop):
+        self.dir = dir
         self.que = que
         self.loop = loop
         # 计数器字典：{name1: {part1: counter, ...}, ...}
@@ -56,7 +57,7 @@ class ServerProtocol:
     
     def write_data(self, info, data, addr):
         '''写入本地数据并回发get消息'''
-        with open(info['name'], 'ab') as filedata:
+        with open(os.path.join(self.dir, info['name']), 'ab') as filedata:
             filedata.write(data)
         print('{0}(part {1}/{2}) complete.'.format(info['name'], info['part'] + 1, info['all']), end='\n')
         # 非末块则有回送操作(这里是用插入新值封住了接收重复块)
@@ -71,7 +72,7 @@ class ServerProtocol:
 
     def MD5_checker(self, info, addr):
         '''MD5检查函数，不带重发机制'''
-        with open(info['name'], 'rb') as filedata:
+        with open(os.path.join(self.dir, info['name']), 'rb') as filedata:
             md5 = hashlib.md5()
             for line in filedata:
                 md5.update(line)
@@ -82,11 +83,11 @@ class ServerProtocol:
             self.transport.sendto(json.dumps({'type':'message','name':info['name'],'data':'MD5_failed'}).encode(), addr)
             print('\n', info['name'], 'MD5 checking failed.\n')
         
-async def main(incoming_ip, bind_port, que):
+async def main(incoming_ip, bind_port, dir, que):
     '''服务端主函数'''
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(
-        lambda: ServerProtocol(que, loop),
+        lambda: ServerProtocol(dir, que, loop),
         local_addr=(incoming_ip, bind_port))
     print('Waiting for incoming transmission...')
     try:
@@ -94,5 +95,5 @@ async def main(incoming_ip, bind_port, que):
     finally:
         transport.close()
         
-def starter(incoming_ip, bind_port, que):
-    asyncio.run(main(incoming_ip, bind_port, que))
+def starter(incoming_ip, bind_port, dir, que):
+    asyncio.run(main(incoming_ip, bind_port, dir, que))

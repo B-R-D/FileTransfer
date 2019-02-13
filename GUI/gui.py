@@ -116,15 +116,15 @@ class ClientWindow(QMainWindow):
         exitAct.triggered.connect(self.safeClose)
         
         settingMenu = menubar.addMenu('设置(&S)')
-        netAct = QAction('网络设置(&N)', self)
-        fileAct = QAction('传输设置(&F)', self)
+        clientAct = QAction('客户端设置(&C)', self)
+        serverAct = QAction('服务端设置(&S)', self)
         uiAct = QAction('界面设置(&U)', self)
         
-        settingMenu.addAction(netAct)
-        settingMenu.addAction(fileAct)
+        settingMenu.addAction(clientAct)
+        settingMenu.addAction(serverAct)
         settingMenu.addAction(uiAct)
-        netAct.triggered.connect(self.netSettingDialog)
-        fileAct.triggered.connect(self.transSettingDialog)
+        clientAct.triggered.connect(self.clientSettingDialog)
+        serverAct.triggered.connect(self.serverSettingDialog)
         uiAct.triggered.connect(self.uiSettingDialog)
 
         # 定义控件：选择按钮(默认按钮)，空区域(左上对齐)，文件列表(单元格不可选择)，发送按钮
@@ -163,16 +163,17 @@ class ClientWindow(QMainWindow):
         self.show()
         
         # 按设置启动服务端
-        self.settings.beginGroup('NetSetting')
+        self.settings.beginGroup('ServerSetting')
         setting_open_server = int(self.settings.value('open_server', True))
         self.settings.endGroup()
         if setting_open_server:
             print('启动服务端')
-            self.settings.beginGroup('NetSetting')
+            self.settings.beginGroup('ServerSetting')
             setting_incoming_ip = self.settings.value('incoming_ip', '0.0.0.0')
             setting_bind_port = int(self.settings.value('bind_port', 54321))
+            setting_receive_dir = self.settings.value('receive_dir', os.path.abspath('.'))
             self.settings.endGroup()
-            self.server_starter = Process(target=server.starter, args=(setting_incoming_ip, setting_bind_port, self.que))
+            self.server_starter = Process(target=server.starter, args=(setting_incoming_ip, setting_bind_port, setting_receive_dir, self.que))
             self.server_starter.start()
     
     def simple_viewer(self):
@@ -415,15 +416,15 @@ class ClientWindow(QMainWindow):
             self.settings.endGroup()
         self.settings.sync()
 
-    def netSettingDialog(self):
-        '''网络设置对话框'''
-        self.netsetting = NetDialog(self)
-        self.netsetting.show()
+    def clientSettingDialog(self):
+        '''客户端设置对话框'''
+        self.clientsetting = ClientSettingDialog(self)
+        self.clientsetting.show()
  
-    def transSettingDialog(self):
-        '''传输设置对话框'''
-        self.transsetting = TransDialog(self)
-        self.transsetting.show()
+    def serverSettingDialog(self):
+        '''服务端设置对话框'''
+        self.serversetting = ServerSettingDialog(self)
+        self.serversetting.show()
 
     def uiSettingDialog(self):
         '''UI设置对话框'''
@@ -464,10 +465,13 @@ class ClientWindow(QMainWindow):
             changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
             inst.getFileLabel().setText(changed_text)
 
-class NetDialog(QWidget):
+class ClientSettingDialog(QWidget):
     '''
-    网络设置对话框(模态)。
-    包含双端IP和端口号设置。
+    客户端设置对话框(模态)。
+    包含设置：
+    服务端网络IP和端口号设置；
+    同时传输的文件数设置；
+    是否删除源文件设置。
     '''
     def __init__(self, parent):
         super().__init__()
@@ -480,12 +484,12 @@ class NetDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width / 7.68, 0)
+        self.resize(self.width / 8, 0)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
         
-        self.settings.beginGroup('NetSetting')
+        self.settings.beginGroup('ClientSetting')
         self.Lserver_ip = QLabel('服务器IP')
         self.Eserver_ip = QLineEdit(self)
         setting_host = self.settings.value('host', '127.0.0.1')
@@ -497,36 +501,31 @@ class NetDialog(QWidget):
         setting_server_port = int(self.settings.value('server_port', 12345))
         self.Sserver_port.setValue(setting_server_port)
         
-        self.Lincoming_ip = QLabel('呼入IP')
-        self.Eincoming_ip = QLineEdit(self)
-        setting_incoming_ip = self.settings.value('incoming_ip', '0.0.0.0')
-        self.Eincoming_ip.setText(setting_incoming_ip)
-        self.Lbind_port = QLabel('绑定端口          ')
-        self.Sbind_port = QSpinBox(self)
-        self.Sbind_port.setRange(1024, 65535)
-        self.Sbind_port.setWrapping(True)
-        setting_bind_port = int(self.settings.value('bind_port', 54321))
-        self.Sbind_port.setValue(setting_bind_port)
-        self.Lopen_server = QLabel('启动时开启服务端')
-        self.Copen_server = QCheckBox(self)
-        setting_open_server = int(self.settings.value('open_server', True))
-        self.Copen_server.setChecked(setting_open_server)
+        self.Gnet = QGroupBox('网络设置')
+        net_form = QFormLayout()
+        net_form.setSpacing(10)
+        net_form.addRow(self.Lserver_ip, self.Eserver_ip)
+        net_form.addRow(self.Lserver_port, self.Sserver_port)
+        self.Gnet.setLayout(net_form)
+        
+        self.Lfile_num = QLabel('同时传输的文件数  ')
+        self.Sfile_num = QSpinBox(self)
+        self.Sfile_num.setRange(1, 3)
+        self.Sfile_num.setWrapping(True)
+        setting_file_num = int(self.settings.value('file_at_same_time', 2))
+        self.Sfile_num.setValue(setting_file_num)
+        self.Ldel_source = QLabel('完成后删除源文件')
+        self.Cdel_source = QCheckBox(self)
+        setting_del_source = int(self.settings.value('del_source', False))
+        self.Cdel_source.setChecked(setting_del_source)
         self.settings.endGroup()
         
-        self.Gclient = QGroupBox('客户端设置')
-        client_form = QFormLayout()
-        client_form.setSpacing(20)
-        client_form.addRow(self.Lserver_ip, self.Eserver_ip)
-        client_form.addRow(self.Lserver_port, self.Sserver_port)
-        self.Gclient.setLayout(client_form)
-        
-        self.Gserver = QGroupBox('服务端设置')
-        server_form = QFormLayout()
-        server_form.setSpacing(20)
-        server_form.addRow(self.Lincoming_ip, self.Eincoming_ip)
-        server_form.addRow(self.Lbind_port, self.Sbind_port)
-        server_form.addRow(self.Lopen_server, self.Copen_server)
-        self.Gserver.setLayout(server_form)
+        self.Gtrans = QGroupBox('传输设置')
+        trans_form = QFormLayout()
+        trans_form.setSpacing(10)
+        trans_form.addRow(self.Lfile_num, self.Sfile_num)
+        trans_form.addRow(self.Ldel_source, self.Cdel_source)
+        self.Gtrans.setLayout(trans_form)
         
         self.Bconfirm = QPushButton('确定', self)
         self.Bconfirm.setDefault(True)
@@ -540,29 +539,31 @@ class NetDialog(QWidget):
         hbox.addStretch(1)
         
         vbox = QVBoxLayout()
-        vbox.setSpacing(40)
-        vbox.addWidget(self.Gclient)
-        vbox.addWidget(self.Gserver)
+        vbox.setSpacing(20)
+        vbox.addWidget(self.Gnet)
+        vbox.addWidget(self.Gtrans)
         vbox.addLayout(hbox)
         self.setLayout(vbox)
-        self.setWindowTitle('网络设置')
+        self.setWindowTitle('服务端设置')
     
     def store(self):
-        # 检查双端端口号设置不能相同
-        if self.Sserver_port.value() == self.Sbind_port.value():
+        # 双端端口号设置不能相同
+        self.settings.beginGroup('ServerSetting')
+        setting_bind_port = int(self.settings.value('bind_port', 54321))
+        self.settings.endGroup()
+        if self.Sserver_port.value() == setting_bind_port:
             msgBox = QMessageBox(self)
             msgBox.setWindowTitle('错误')
             msgBox.setIcon(QMessageBox.Warning)
-            msgBox.setText('端口号冲突！\n请设置不同的端口号！')
+            msgBox.setText('端口号冲突！\n请设置与服务端不同的端口号！')
             msgBox.addButton('确定', QMessageBox.AcceptRole)
             msgBox.exec()
         else:
-            self.settings.beginGroup('NetSetting')
+            self.settings.beginGroup('ClientSetting')
             self.settings.setValue('host', self.Eserver_ip.text())
             self.settings.setValue('server_port', self.Sserver_port.value())
-            self.settings.setValue('incoming_ip', self.Eincoming_ip.text())
-            self.settings.setValue('bind_port', self.Sbind_port.value())
-            self.settings.setValue('open_server', int(self.Copen_server.isChecked()))
+            self.settings.setValue('file_at_same_time', self.Sfile_num.value())
+            self.settings.setValue('del_source', int(self.Cdel_source.isChecked()))
             self.settings.sync()
             self.settings.endGroup()
             self.close()
@@ -571,10 +572,12 @@ class NetDialog(QWidget):
         if k.key() == Qt.Key_Escape:
             self.close()
 
-class TransDialog(QWidget):
+class ServerSettingDialog(QWidget):
     '''
-    传输设置对话框(模态)。
-    包含同时传输的文件数和是否删除源文件设置。
+    服务端设置对话框(模态)。
+    包含设置：
+    服务端IP及端口绑定；
+    接收文件的保存位置。
     '''
     def __init__(self, parent):
         super().__init__()
@@ -587,54 +590,98 @@ class TransDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width / 8.5, 0)
+        self.resize(self.width / 8, 0)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
         
-        self.settings.beginGroup('TransSetting')
-        self.Lfile_num = QLabel('同时传输的文件数(1-3)')
-        self.Sfile_num = QSpinBox(self)
-        self.Sfile_num.setRange(1, 3)
-        self.Sfile_num.setWrapping(True)
-        self.Ldel_source = QLabel('传输完成后删除源文件')
-        self.Cdel_source = QCheckBox(self)
+        self.settings.beginGroup('ServerSetting')
+        self.Lincoming_ip = QLabel('呼入IP')
+        self.Eincoming_ip = QLineEdit(self)
+        setting_incoming_ip = self.settings.value('incoming_ip', '0.0.0.0')
+        self.Eincoming_ip.setText(setting_incoming_ip)
+        self.Lbind_port = QLabel('绑定端口          ')
+        self.Sbind_port = QSpinBox(self)
+        self.Sbind_port.setRange(1024, 65535)
+        self.Sbind_port.setWrapping(True)
+        setting_bind_port = int(self.settings.value('bind_port', 54321))
+        self.Sbind_port.setValue(setting_bind_port)
 
-        setting_file_num = int(self.settings.value('file_at_same_time', 2))
-        self.Sfile_num.setValue(setting_file_num)
-        setting_del_source = int(self.settings.value('del_source', False))
-        self.Cdel_source.setChecked(setting_del_source)
+        self.Gnet = QGroupBox('网络设置')
+        net_form = QFormLayout()
+        net_form.setSpacing(10)
+        net_form.addRow(self.Lincoming_ip, self.Eincoming_ip)
+        net_form.addRow(self.Lbind_port, self.Sbind_port)
+        self.Gnet.setLayout(net_form)
+        
+        self.Lopen_server = QLabel('服务端自启动      ')
+        self.Copen_server = QCheckBox(self)
+        setting_open_server = int(self.settings.value('open_server', True))
+        self.Copen_server.setChecked(setting_open_server)
+        self.Lreceive_dir = QLabel('文件保存目录')
+        self.Breceive_dir = QPushButton('浏览')
+        self.Breceive_dir.clicked.connect(self.chooseDir)
+        self.Ereceive_dir = QLineEdit(self)
+        self.Ereceive_dir.setReadOnly(True)
+        setting_receive_dir = self.settings.value('receive_dir', os.path.abspath('.'))
+        self.Ereceive_dir.setText(setting_receive_dir)
         self.settings.endGroup()
+        
+        self.Gtrans = QGroupBox('传输设置')
+        trans_form = QFormLayout()
+        trans_form.setSpacing(10)
+        trans_form.addRow(self.Lopen_server, self.Copen_server)
+        trans_form.addRow(self.Lreceive_dir, self.Breceive_dir)
+        trans_form.addRow(self.Ereceive_dir)
+        self.Gtrans.setLayout(trans_form)
         
         self.Bconfirm = QPushButton('确定', self)
         self.Bconfirm.setDefault(True)
         self.Bcancel = QPushButton('取消', self)
-        
         self.Bconfirm.clicked.connect(self.store)
         self.Bcancel.clicked.connect(self.close)
-        
-        form = QFormLayout()
-        form.setSpacing(30)
-        form.addRow(self.Lfile_num, self.Sfile_num)
-        form.addRow(self.Ldel_source, self.Cdel_source)
         hbox = QHBoxLayout()
         hbox.addStretch(1)
         hbox.addWidget(self.Bconfirm)
         hbox.addWidget(self.Bcancel)
         hbox.addStretch(1)
-        form.addRow(hbox)
-        self.setLayout(form)
         
-        self.setWindowTitle('传输设置')
+        vbox = QVBoxLayout()
+        vbox.setSpacing(20)
+        vbox.addWidget(self.Gnet)
+        vbox.addWidget(self.Gtrans)
+        vbox.addLayout(hbox)
+        self.setLayout(vbox)
+        self.setWindowTitle('服务端设置')
     
     def store(self):
-        self.settings.beginGroup('TransSetting')
-        self.settings.setValue('file_at_same_time', self.Sfile_num.value())
-        self.settings.setValue('del_source', int(self.Cdel_source.isChecked()))
-        self.settings.sync()
+        self.settings.beginGroup('ClientSetting')
+        setting_server_port = int(self.settings.value('server_port', 12345))
         self.settings.endGroup()
-        self.close()
-        
+        if self.Sbind_port.value() == setting_server_port:
+            msgBox = QMessageBox(self)
+            msgBox.setWindowTitle('错误')
+            msgBox.setIcon(QMessageBox.Warning)
+            msgBox.setText('端口号冲突！\n请设置与客户端不同的端口号！')
+            msgBox.addButton('确定', QMessageBox.AcceptRole)
+            msgBox.exec()
+        else:
+            self.settings.beginGroup('ServerSetting')
+            self.settings.setValue('incoming_ip', self.Eincoming_ip.text())
+            self.settings.setValue('bind_port', self.Sbind_port.value())
+            self.settings.setValue('open_server', int(self.Copen_server.isChecked()))
+            self.settings.setValue('receive_dir', self.Ereceive_dir.text())
+            self.settings.sync()
+            self.settings.endGroup()
+            self.close()
+    
+    def chooseDir(self):
+        self.settings.beginGroup('ServerSetting')
+        path = QFileDialog.getExistingDirectory(self, '选择目录', self.Ereceive_dir.text())
+        if path:
+            self.Ereceive_dir.setText(path)
+        self.settings.endGroup()
+    
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
             self.close()
@@ -684,7 +731,6 @@ class UIDialog(QWidget):
         hbox.addStretch(1)
         form.addRow(hbox)
         self.setLayout(form)
-        
         self.setWindowTitle('界面设置')
     
     def store(self):
