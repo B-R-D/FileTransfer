@@ -4,12 +4,12 @@ UDP客户端GUI版
 '''
 import os, sys, functools, queue, time
 from multiprocessing import Process, Queue
-import clientudp
+import client, server
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon
 from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox
 
 class FileStatus:
     '''
@@ -42,7 +42,7 @@ class FileStatus:
     def getFileName(self):
         return self._name
     def getFileSize(self):
-        return clientudp.display_file_length(self._size)
+        return client.display_file_length(self._size)
     def getFileStatus(self):
         return self._status
     def getFileButton(self):
@@ -161,6 +161,19 @@ class ClientWindow(QMainWindow):
         
         self.setWindowTitle('FileTransfer')
         self.show()
+        
+        # 按设置启动服务端
+        self.settings.beginGroup('NetSetting')
+        setting_open_server = int(self.settings.value('open_server', True))
+        self.settings.endGroup()
+        if setting_open_server:
+            print('启动服务端')
+            self.settings.beginGroup('NetSetting')
+            setting_incoming_ip = self.settings.value('incoming_ip', '0.0.0.0')
+            setting_bind_port = int(self.settings.value('bind_port', 54321))
+            self.settings.endGroup()
+            self.server_starter = Process(target=server.starter, args=(setting_incoming_ip, setting_bind_port, self.que))
+            self.server_starter.start()
     
     def simple_viewer(self):
         '''简明视图构建：包含按钮及进度条'''
@@ -262,9 +275,9 @@ class ClientWindow(QMainWindow):
             self.Lfile_empty.show()
 
     def fileChecker(self):
-        '''文件列表检查及传输进程开启'''
+        '''文件列表检查及客户端传输进程开启'''
         if not self.files:
-            msgBox = QMessageBox()
+            msgBox = QMessageBox(self)
             msgBox.setWindowTitle('错误')
             msgBox.setIcon(QMessageBox.Warning)
             msgBox.setText('未选择文件！')
@@ -277,7 +290,7 @@ class ClientWindow(QMainWindow):
             self.settings.endGroup()
             self.settings.beginGroup('NetSetting')
             setting_host = self.settings.value('host', '127.0.0.1')
-            setting_port = int(self.settings.value('port', 12345))
+            setting_port = int(self.settings.value('server_port', 12345))
             self.settings.endGroup()
             # 更改表格中文件行的状态
             for inst in self.files:
@@ -286,7 +299,7 @@ class ClientWindow(QMainWindow):
                 self.file_table.item(index, 4).setText('传输中')
             # 构建绝对路径列表并启动传输子进程
             path_list = [inst.getFilePath() for inst in self.files]
-            self.file_sender = Process(target=clientudp.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.que))
+            self.file_sender = Process(target=client.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.que))
             self.file_sender.start()
             # 启动进度条更新
             self.timer = QTimer()
@@ -424,7 +437,8 @@ class ClientWindow(QMainWindow):
         self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
         self.settings.endGroup()
         try:
-            # 关闭进度计时器和传输子进程
+            # 关闭服务器，进度计时器和传输子进程
+            self.server_starter.terminate()
             self.timer.stop()
             del self.timer
             self.file_sender.terminate()
@@ -453,7 +467,7 @@ class ClientWindow(QMainWindow):
 class NetDialog(QWidget):
     '''
     网络设置对话框(模态)。
-    包含服务器IP和端口号设置。
+    包含双端IP和端口号设置。
     '''
     def __init__(self, parent):
         super().__init__()
@@ -466,51 +480,92 @@ class NetDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.resize(self.width / 7.68, self.height / 10.8)
+        self.resize(self.width / 7.68, 0)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
         
         self.settings.beginGroup('NetSetting')
-        self.Lip = QLabel('服务器IP')
-        self.Eip = QLineEdit(self)
+        self.Lserver_ip = QLabel('服务器IP')
+        self.Eserver_ip = QLineEdit(self)
         setting_host = self.settings.value('host', '127.0.0.1')
-        self.Eip.setText(setting_host)
-        self.Lport = QLabel('端口号(1024-65535)')
-        self.Sport = QSpinBox(self)
-        self.Sport.setRange(1024, 65535)
-        self.Sport.setWrapping(True)
-        setting_port = int(self.settings.value('port', 12345))
-        self.Sport.setValue(setting_port)
+        self.Eserver_ip.setText(setting_host)
+        self.Lserver_port = QLabel('端口号            ')
+        self.Sserver_port = QSpinBox(self)
+        self.Sserver_port.setRange(1024, 65535)
+        self.Sserver_port.setWrapping(True)
+        setting_server_port = int(self.settings.value('server_port', 12345))
+        self.Sserver_port.setValue(setting_server_port)
+        
+        self.Lincoming_ip = QLabel('呼入IP')
+        self.Eincoming_ip = QLineEdit(self)
+        setting_incoming_ip = self.settings.value('incoming_ip', '0.0.0.0')
+        self.Eincoming_ip.setText(setting_incoming_ip)
+        self.Lbind_port = QLabel('绑定端口          ')
+        self.Sbind_port = QSpinBox(self)
+        self.Sbind_port.setRange(1024, 65535)
+        self.Sbind_port.setWrapping(True)
+        setting_bind_port = int(self.settings.value('bind_port', 54321))
+        self.Sbind_port.setValue(setting_bind_port)
+        self.Lopen_server = QLabel('启动时开启服务端')
+        self.Copen_server = QCheckBox(self)
+        setting_open_server = int(self.settings.value('open_server', True))
+        self.Copen_server.setChecked(setting_open_server)
         self.settings.endGroup()
+        
+        self.Gclient = QGroupBox('客户端设置')
+        client_form = QFormLayout()
+        client_form.setSpacing(20)
+        client_form.addRow(self.Lserver_ip, self.Eserver_ip)
+        client_form.addRow(self.Lserver_port, self.Sserver_port)
+        self.Gclient.setLayout(client_form)
+        
+        self.Gserver = QGroupBox('服务端设置')
+        server_form = QFormLayout()
+        server_form.setSpacing(20)
+        server_form.addRow(self.Lincoming_ip, self.Eincoming_ip)
+        server_form.addRow(self.Lbind_port, self.Sbind_port)
+        server_form.addRow(self.Lopen_server, self.Copen_server)
+        self.Gserver.setLayout(server_form)
         
         self.Bconfirm = QPushButton('确定', self)
         self.Bconfirm.setDefault(True)
         self.Bcancel = QPushButton('取消', self)
         self.Bconfirm.clicked.connect(self.store)
         self.Bcancel.clicked.connect(self.close)
-        
-        form = QFormLayout()
-        form.setSpacing(30)
         hbox = QHBoxLayout()
         hbox.addStretch(1)
         hbox.addWidget(self.Bconfirm)
         hbox.addWidget(self.Bcancel)
         hbox.addStretch(1)
-        form.addRow(self.Lip, self.Eip)
-        form.addRow(self.Lport, self.Sport)
-        form.addRow(hbox)
-        self.setLayout(form)
         
+        vbox = QVBoxLayout()
+        vbox.setSpacing(40)
+        vbox.addWidget(self.Gclient)
+        vbox.addWidget(self.Gserver)
+        vbox.addLayout(hbox)
+        self.setLayout(vbox)
         self.setWindowTitle('网络设置')
     
     def store(self):
-        self.settings.beginGroup('NetSetting')
-        self.settings.setValue('host', self.Eip.text())
-        self.settings.setValue('port', self.Sport.value())
-        self.settings.sync()
-        self.settings.endGroup()
-        self.close()
+        # 检查双端端口号设置不能相同
+        if self.Sserver_port.value() == self.Sbind_port.value():
+            msgBox = QMessageBox(self)
+            msgBox.setWindowTitle('错误')
+            msgBox.setIcon(QMessageBox.Warning)
+            msgBox.setText('端口号冲突！\n请设置不同的端口号！')
+            msgBox.addButton('确定', QMessageBox.AcceptRole)
+            msgBox.exec()
+        else:
+            self.settings.beginGroup('NetSetting')
+            self.settings.setValue('host', self.Eserver_ip.text())
+            self.settings.setValue('server_port', self.Sserver_port.value())
+            self.settings.setValue('incoming_ip', self.Eincoming_ip.text())
+            self.settings.setValue('bind_port', self.Sbind_port.value())
+            self.settings.setValue('open_server', int(self.Copen_server.isChecked()))
+            self.settings.sync()
+            self.settings.endGroup()
+            self.close()
         
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
