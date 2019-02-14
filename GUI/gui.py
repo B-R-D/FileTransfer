@@ -116,8 +116,8 @@ class ClientWindow(QMainWindow):
         exitAct.triggered.connect(self.safeClose)
         
         settingMenu = menubar.addMenu('设置(&S)')
-        clientAct = QAction('客户端设置(&C)', self)
-        serverAct = QAction('服务端设置(&S)', self)
+        clientAct = QAction('发送端设置(&C)', self)
+        serverAct = QAction('接收端设置(&S)', self)
         uiAct = QAction('界面设置(&U)', self)
         
         settingMenu.addAction(clientAct)
@@ -464,9 +464,9 @@ class ClientWindow(QMainWindow):
 
 class ClientSettingDialog(QWidget):
     '''
-    客户端设置对话框(模态)。
+    发送端设置对话框(模态)。
     包含设置：
-    服务端网络IP和端口号设置；
+    接收端网络IP和端口号设置；
     同时传输的文件数设置；
     是否删除源文件设置。
     '''
@@ -488,14 +488,16 @@ class ClientSettingDialog(QWidget):
         self.move(qr.topLeft())
         
         self.settings.beginGroup('ClientSetting')
-        self.Lserver_ip = QLabel('服务器IP')
+        self.Lserver_ip = QLabel('接收端IP')
         self.Eserver_ip = QLineEdit(self)
         setting_host = self.settings.value('host', '127.0.0.1')
         self.Eserver_ip.setText(setting_host)
+        self.Eserver_ip.setContextMenuPolicy(Qt.NoContextMenu)
         self.Lserver_port = QLabel('端口号            ')
         self.Sserver_port = QSpinBox(self)
         self.Sserver_port.setRange(1024, 65535)
         self.Sserver_port.setWrapping(True)
+        self.Sserver_port.setContextMenuPolicy(Qt.NoContextMenu)
         setting_server_port = int(self.settings.value('server_port', 12345))
         self.Sserver_port.setValue(setting_server_port)
         
@@ -510,6 +512,7 @@ class ClientSettingDialog(QWidget):
         self.Sfile_num = QSpinBox(self)
         self.Sfile_num.setRange(1, 3)
         self.Sfile_num.setWrapping(True)
+        self.Sfile_num.setContextMenuPolicy(Qt.NoContextMenu)
         setting_file_num = int(self.settings.value('file_at_same_time', 2))
         self.Sfile_num.setValue(setting_file_num)
         self.Ldel_source = QLabel('完成后删除源文件')
@@ -542,7 +545,7 @@ class ClientSettingDialog(QWidget):
         vbox.addWidget(self.Gtrans)
         vbox.addLayout(hbox)
         self.setLayout(vbox)
-        self.setWindowTitle('客户端设置')
+        self.setWindowTitle('发送端设置')
     
     def store(self):
         # 双端端口号设置不能相同
@@ -553,7 +556,7 @@ class ClientSettingDialog(QWidget):
             msgBox = QMessageBox(self)
             msgBox.setWindowTitle('错误')
             msgBox.setIcon(QMessageBox.Warning)
-            msgBox.setText('端口号冲突！\n请设置与服务端不同的端口号！')
+            msgBox.setText('端口号冲突！\n请设置与接收端不同的端口号！')
             msgBox.addButton('确定', QMessageBox.AcceptRole)
             msgBox.exec()
         else:
@@ -597,12 +600,14 @@ class ServerSettingDialog(QWidget):
         self.settings.beginGroup('ServerSetting')
         self.Lincoming_ip = QLabel('呼入IP')
         self.Eincoming_ip = QLineEdit(self)
+        self.Eincoming_ip.setContextMenuPolicy(Qt.NoContextMenu)
         setting_incoming_ip = self.settings.value('incoming_ip', '0.0.0.0')
         self.Eincoming_ip.setText(setting_incoming_ip)
         self.Lbind_port = QLabel('绑定端口          ')
         self.Sbind_port = QSpinBox(self)
         self.Sbind_port.setRange(1024, 65535)
         self.Sbind_port.setWrapping(True)
+        self.Sbind_port.setContextMenuPolicy(Qt.NoContextMenu)
         setting_bind_port = int(self.settings.value('bind_port', 54321))
         self.Sbind_port.setValue(setting_bind_port)
 
@@ -613,7 +618,7 @@ class ServerSettingDialog(QWidget):
         net_form.addRow(self.Lbind_port, self.Sbind_port)
         self.Gnet.setLayout(net_form)
         
-        self.Lopen_server = QLabel('服务端自启动      ')
+        self.Lopen_server = QLabel('接收端自启动      ')
         self.Copen_server = QCheckBox(self)
         setting_open_server = int(self.settings.value('open_server', True))
         self.Copen_server.setChecked(setting_open_server)
@@ -622,6 +627,7 @@ class ServerSettingDialog(QWidget):
         self.Breceive_dir.clicked.connect(self.chooseDir)
         self.Ereceive_dir = QLineEdit(self)
         self.Ereceive_dir.setReadOnly(True)
+        self.Ereceive_dir.setContextMenuPolicy(Qt.NoContextMenu)
         setting_receive_dir = self.settings.value('receive_dir', os.path.abspath('.'))
         self.Ereceive_dir.setText(setting_receive_dir)
         self.settings.endGroup()
@@ -651,7 +657,7 @@ class ServerSettingDialog(QWidget):
         vbox.addWidget(self.Gtrans)
         vbox.addLayout(hbox)
         self.setLayout(vbox)
-        self.setWindowTitle('服务端设置')
+        self.setWindowTitle('接收端设置')
     
     def store(self):
         self.settings.beginGroup('ClientSetting')
@@ -661,7 +667,7 @@ class ServerSettingDialog(QWidget):
             msgBox = QMessageBox(self)
             msgBox.setWindowTitle('错误')
             msgBox.setIcon(QMessageBox.Warning)
-            msgBox.setText('端口号冲突！\n请设置与客户端不同的端口号！')
+            msgBox.setText('端口号冲突！\n请设置与发送端不同的端口号！')
             msgBox.addButton('确定', QMessageBox.AcceptRole)
             msgBox.exec()
         else:
