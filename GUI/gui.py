@@ -167,7 +167,6 @@ class ClientWindow(QMainWindow):
         setting_open_server = int(self.settings.value('open_server', True))
         self.settings.endGroup()
         if setting_open_server:
-            print('启动服务端')
             self.settings.beginGroup('ServerSetting')
             setting_incoming_ip = self.settings.value('incoming_ip', '0.0.0.0')
             setting_bind_port = int(self.settings.value('bind_port', 54321))
@@ -286,10 +285,8 @@ class ClientWindow(QMainWindow):
             msgBox.exec()
         else:
             # 从传输设置中调用同时传输的文件数及网络设定
-            self.settings.beginGroup('TransSetting')
+            self.settings.beginGroup('ClientSetting')
             setting_file_at_same_time = int(self.settings.value('file_at_same_time', 2))
-            self.settings.endGroup()
-            self.settings.beginGroup('NetSetting')
             setting_host = self.settings.value('host', '127.0.0.1')
             setting_port = int(self.settings.value('server_port', 12345))
             self.settings.endGroup()
@@ -314,7 +311,7 @@ class ClientWindow(QMainWindow):
             message = self.que.get(block=False)
             if message['type'] == 'info':
                 # 从传输设置中调用是否删除源文件
-                self.settings.beginGroup('TransSetting')
+                self.settings.beginGroup('ClientSetting')
                 setting_del_source = int(self.settings.value('del_source', False))
                 self.settings.endGroup()
 
@@ -545,7 +542,7 @@ class ClientSettingDialog(QWidget):
         vbox.addWidget(self.Gtrans)
         vbox.addLayout(hbox)
         self.setLayout(vbox)
-        self.setWindowTitle('服务端设置')
+        self.setWindowTitle('客户端设置')
     
     def store(self):
         # 双端端口号设置不能相同
@@ -704,14 +701,14 @@ class UIDialog(QWidget):
         self.resolution = QDesktopWidget().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.setFixedSize(self.width / 8.5, 0)
+        self.setFixedSize(self.width / 8, 0)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
         
         self.settings.beginGroup('UISetting')
-        self.Lview = QLabel('启用详细视图(重启后生效)')
+        self.Lview = QLabel('启用详细视图(重启生效)')
         self.Cview = QCheckBox(self)
         setting_view = int(self.settings.value('detail_view', False))
         self.Cview.setChecked(setting_view)
