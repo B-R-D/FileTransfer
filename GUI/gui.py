@@ -7,8 +7,8 @@ from multiprocessing import Process, Queue
 import client, server
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
-from PyQt5.QtGui import QFont, QFontMetrics, QIcon
-from PyQt5.QtWidgets import QWidget, QDesktopWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget
+from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication
+from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget
 from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox
 
 class FileStatus:
@@ -87,7 +87,7 @@ class ClientWindow(QMainWindow):
     def initUI(self):
         self.setFont(QFont('Arial', 10))
         # 收集屏幕分辨率信息
-        self.resolution = QDesktopWidget().availableGeometry()
+        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
         # 恢复上次关闭时的窗口尺寸
@@ -95,10 +95,8 @@ class ClientWindow(QMainWindow):
         setting_window_size = self.settings.value('window_size', (self.width / 6.4, self.height / 2.7))
         self.settings.endGroup()
         self.resize(setting_window_size[0], setting_window_size[1])
-        # 在屏幕中央打开窗口
-        qr = self.frameGeometry()
-        qr.moveCenter(self.resolution.center())
-        self.move(qr.topLeft())
+        # 在屏幕中央(不含开始菜单栏)打开窗口
+        self.frameGeometry().moveCenter(self.resolution.center())
         
         # 定义菜单栏：文件，设置
         menubar = self.menuBar()
@@ -436,7 +434,7 @@ class ClientWindow(QMainWindow):
         self.settings.endGroup()
         try:
             # 关闭服务器，进度计时器和传输子进程
-            self.server_starter.terminate()
+            self.server_starter.kill()
             self.timer.stop()
             del self.timer
             self.file_sender.terminate()
@@ -478,11 +476,11 @@ class ClientSettingDialog(QWidget):
 
     def initUI(self):
         self.setWindowModality(Qt.ApplicationModal)
-        self.resolution = QDesktopWidget().availableGeometry()
+        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.setFixedSize(self.width / 8, 0)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        self.setFixedSize(self.width / 8, self.height / 5.4)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
@@ -588,11 +586,11 @@ class ServerSettingDialog(QWidget):
 
     def initUI(self):
         self.setWindowModality(Qt.ApplicationModal)
-        self.resolution = QDesktopWidget().availableGeometry()
+        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.setFixedSize(self.width / 8, 0)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        self.setFixedSize(self.width / 8, self.height / 4.8)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
@@ -704,11 +702,11 @@ class UIDialog(QWidget):
 
     def initUI(self):
         self.setWindowModality(Qt.ApplicationModal)
-        self.resolution = QDesktopWidget().availableGeometry()
+        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
-        self.setFixedSize(self.width / 8, 0)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        self.setFixedSize(self.width / 8, self.height / 14.4)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
