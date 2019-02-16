@@ -2,14 +2,14 @@
 '''
 UDP客户端GUI版
 '''
-import os, sys, functools, queue, time
+import os, sys, functools, queue
 from multiprocessing import Process, Queue
 import client, server
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication
 from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox, QStatusBar 
 
 class FileStatus:
     '''
@@ -147,7 +147,24 @@ class ClientWindow(QMainWindow):
         self.vbox.addWidget(self.Lfile_empty)
         self.vbox.addWidget(self.Bsend)
         self.widget.setLayout(self.vbox)
-
+        
+        # 创建状态栏
+        self.statusbar = self.statusBar()
+        self.statusbar.setSizeGripEnabled(False)
+        self.Lclient_status = QLabel('发送端已就绪')
+        self.Lserver_status = QLabel('接收端未启动')
+        self.statusbar.addWidget(self.Lclient_status, 1)
+        self.statusbar.addWidget(self.Lserver_status, 1)
+        
+        # 从设置中读取状态栏设定并定义状态栏
+        self.settings.beginGroup('UISetting')
+        self.setting_status_bar = int(self.settings.value('status_bar', True))
+        self.settings.endGroup()
+        if self.setting_status_bar:
+            self.statusbar.show()
+        else:
+            self.statusbar.hide()
+        
         # 从设置中读取视图设定并设定窗口最小值
         self.settings.beginGroup('UISetting')
         self.setting_detail_view = int(self.settings.value('detail_view', False))
@@ -165,6 +182,7 @@ class ClientWindow(QMainWindow):
         setting_open_server = int(self.settings.value('open_server', True))
         self.settings.endGroup()
         if setting_open_server:
+            self.Lserver_status.setText('接收端启动中')
             self.settings.beginGroup('ServerSetting')
             setting_incoming_ip = self.settings.value('incoming_ip', '0.0.0.0')
             setting_bind_port = int(self.settings.value('bind_port', 54321))
@@ -172,6 +190,10 @@ class ClientWindow(QMainWindow):
             self.settings.endGroup()
             self.server_starter = Process(target=server.starter, args=(setting_incoming_ip, setting_bind_port, setting_receive_dir, self.que))
             self.server_starter.start()
+            # 循环读取服务端信息
+            self.server_timer = QTimer()
+            self.server_timer.timeout.connect(self.serverStatus)
+            self.server_timer.start(50)
     
     def simple_viewer(self):
         '''简明视图构建：包含按钮及进度条'''
@@ -327,8 +349,7 @@ class ClientWindow(QMainWindow):
                 # 若无上传中的文件，关闭传输进程且提示完成结果
                 if not self.findInstanceByStatus('uploading'):
                     self.file_sender.terminate()
-                    while self.file_sender.is_alive():
-                        time.sleep(0.1)
+                    self.file_sender.join()
                     self.file_sender.close()
                     self.timer.stop()
                     if not self.findInstanceByStatus('error'):
@@ -357,6 +378,19 @@ class ClientWindow(QMainWindow):
                             self.file_table.item(index, 2).setText('{0:.2f} %'.format(file_prog))
         except queue.Empty:
             # 忽略空队列异常
+            pass
+    
+    def serverStatus(self):
+        '''启动时循环读取服务端状态'''
+        try:
+            message = self.que.get(block=False)
+            if message['message'] == 'error':
+                self.Lserver_status.setText(message['detail'])
+                self.server_timer.stop()
+            elif message['message'] == 'ready':
+                self.Lserver_status.setText('服务端已就绪')
+                self.server_timer.stop()
+        except queue.Empty:
             pass
     
     def safeClose(self):
@@ -434,12 +468,13 @@ class ClientWindow(QMainWindow):
         self.settings.endGroup()
         try:
             # 关闭服务器，进度计时器和传输子进程
-            self.server_starter.kill()
+            self.server_starter.terminate()
+            self.server_starter.join()
+            self.server_starter.close()
             self.timer.stop()
             del self.timer
             self.file_sender.terminate()
-            while self.file_sender.is_alive():
-                time.sleep(0.1)
+            self.file_sender.join()
             self.file_sender.close()
         except ValueError:
             # 忽略传输子进程已关闭时的异常
@@ -706,7 +741,7 @@ class UIDialog(QWidget):
         self.height = self.resolution.height()
         self.width = self.resolution.width()
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.setFixedSize(self.width / 8, self.height / 14.4)
+        self.setFixedSize(self.width / 8, self.height / 10.8)
         qr = self.frameGeometry()
         qr.moveCenter(self.parent.geometry().center())
         self.move(qr.topLeft())
@@ -716,6 +751,10 @@ class UIDialog(QWidget):
         self.Cview = QCheckBox(self)
         setting_view = int(self.settings.value('detail_view', False))
         self.Cview.setChecked(setting_view)
+        self.Lstatus_bar = QLabel('启用状态栏')
+        self.Cstatus_bar = QCheckBox(self)
+        setting_status_bar = int(self.settings.value('status_bar', True))
+        self.Cstatus_bar.setChecked(setting_status_bar)
         self.settings.endGroup()
         
         self.Bconfirm = QPushButton('确定', self)
@@ -728,6 +767,7 @@ class UIDialog(QWidget):
         form = QFormLayout()
         form.setSpacing(30)
         form.addRow(self.Lview, self.Cview)
+        form.addRow(self.Lstatus_bar, self.Cstatus_bar)
         hbox = QHBoxLayout()
         hbox.addStretch(1)
         hbox.addWidget(self.Bconfirm)
@@ -740,6 +780,7 @@ class UIDialog(QWidget):
     def store(self):
         self.settings.beginGroup('UISetting')
         self.settings.setValue('detail_view', int(self.Cview.isChecked()))
+        self.settings.setValue('status_bar', int(self.Cstatus_bar.isChecked()))
         self.settings.sync()
         self.settings.endGroup()
         self.close()

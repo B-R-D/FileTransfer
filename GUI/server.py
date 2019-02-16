@@ -86,9 +86,13 @@ class ServerProtocol:
 async def main(incoming_ip, bind_port, dir, que):
     '''服务端主函数'''
     loop = asyncio.get_running_loop()
-    transport, protocol = await loop.create_datagram_endpoint(
-        lambda: ServerProtocol(dir, que, loop),
-        local_addr=(incoming_ip, bind_port))
+    try:
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: ServerProtocol(dir, que, loop),
+            local_addr=(incoming_ip, bind_port))
+        que.put({'type':'server_info', 'message':'ready'})
+    except Exception as e:
+        que.put({'type':'server_info', 'message':'error', 'detail': repr(e)})
     print('Waiting for incoming transmission...')
     try:
         await asyncio.sleep(99999999)
