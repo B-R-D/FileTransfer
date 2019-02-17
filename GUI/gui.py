@@ -155,15 +155,7 @@ class ClientWindow(QMainWindow):
         self.Lserver_status = QLabel('接收端未启动')
         self.statusbar.addWidget(self.Lclient_status, 1)
         self.statusbar.addWidget(self.Lserver_status, 1)
-        
-        # 从设置中读取状态栏设定并定义状态栏
-        self.settings.beginGroup('UISetting')
-        self.setting_status_bar = int(self.settings.value('status_bar', True))
-        self.settings.endGroup()
-        if self.setting_status_bar:
-            self.statusbar.show()
-        else:
-            self.statusbar.hide()
+        self.statusBarChecker()
         
         # 从设置中读取视图设定并设定窗口最小值
         self.settings.beginGroup('UISetting')
@@ -313,12 +305,17 @@ class ClientWindow(QMainWindow):
             # 更改表格中文件行的状态
             for inst in self.files:
                 inst.setFileStatus('uploading')
+                inst.getFileProg().setValue(0)
                 index = self.findIndexByName(inst.getFileName())
                 self.file_table.item(index, 4).setText('传输中')
-            # 构建绝对路径列表并启动传输子进程
+            # 构建绝对路径列表并启动传输子进程，无法启动的异常反映在状态栏
             path_list = [inst.getFilePath() for inst in self.files]
-            self.file_sender = Process(target=client.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.que))
-            self.file_sender.start()
+            try:
+                self.file_sender = Process(target=client.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.que))
+                self.file_sender.start()
+                self.Lclient_status.setText('传输中：<font color=green>0<font color=black>/<font color=red>0<font color=black>/{0} (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'.format(len(self.findInstanceByStatus('uploading'))))
+            except Exception as e:
+                self.Lclient_status.setText(repr(e))
             # 启动进度条更新
             self.timer = QTimer()
             self.timer.timeout.connect(self.updateProg)
@@ -334,7 +331,6 @@ class ClientWindow(QMainWindow):
                 self.settings.beginGroup('ClientSetting')
                 setting_del_source = int(self.settings.value('del_source', False))
                 self.settings.endGroup()
-
                 # 信息队列：依据MD5检查结果设置文件状态
                 if message['message'] == 'MD5_passed':
                     self.findInstanceByName(message['name']).setFileStatus('complete')
@@ -348,6 +344,7 @@ class ClientWindow(QMainWindow):
 
                 # 若无上传中的文件，关闭传输进程且提示完成结果
                 if not self.findInstanceByStatus('uploading'):
+                    self.Lclient_status.setText('传输完成：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/0 (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'.format(len(self.findInstanceByStatus('complete')), len(self.findInstanceByStatus('error'))))
                     self.file_sender.terminate()
                     self.file_sender.join()
                     self.file_sender.close()
@@ -366,6 +363,8 @@ class ClientWindow(QMainWindow):
                         msgBox.setText('传输完成，但有文件传输出错！')
                         msgBox.addButton('确定', QMessageBox.AcceptRole)
                         msgBox.exec()
+                else:
+                    self.Lclient_status.setText('传输中：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/{2} (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'.format(len(self.findInstanceByStatus('complete')), len(self.findInstanceByStatus('error')), len(self.findInstanceByStatus('uploading'))))
             elif message['type'] == 'prog':
                 # 信息队列：更新进度条进度
                 for inst in self.files:
@@ -392,6 +391,15 @@ class ClientWindow(QMainWindow):
                 self.server_timer.stop()
         except queue.Empty:
             pass
+    
+    def statusBarChecker(self):
+        self.settings.beginGroup('UISetting')
+        setting_status_bar = int(self.settings.value('status_bar', True))
+        self.settings.endGroup()
+        if setting_status_bar:
+            self.statusbar.show()
+        else:
+            self.statusbar.hide()
     
     def safeClose(self):
         '''程序的关闭行为，触发closeEvent事件'''
@@ -448,18 +456,22 @@ class ClientWindow(QMainWindow):
     def clientSettingDialog(self):
         '''客户端设置对话框'''
         self.clientsetting = ClientSettingDialog(self)
+        self.clientsetting.setAttribute(Qt.WA_DeleteOnClose)
         self.clientsetting.show()
  
     def serverSettingDialog(self):
         '''服务端设置对话框'''
         self.serversetting = ServerSettingDialog(self)
+        self.serversetting.setAttribute(Qt.WA_DeleteOnClose)
         self.serversetting.show()
 
     def uiSettingDialog(self):
         '''UI设置对话框'''
         self.uisetting = UIDialog(self)
+        self.uisetting.setAttribute(Qt.WA_DeleteOnClose)
+        self.uisetting.destroyed.connect(self.statusBarChecker)
         self.uisetting.show()
-
+            
     def closeEvent(self, event):
         '''程序关闭时触发'''
         # 记录关闭时的窗口尺寸
@@ -512,13 +524,12 @@ class ClientSettingDialog(QWidget):
     def initUI(self):
         self.setWindowModality(Qt.ApplicationModal)
         self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.height = self.resolution.height()
-        self.width = self.resolution.width()
+        self.reso_height = self.resolution.height()
+        self.reso_width = self.resolution.width()
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.setFixedSize(self.width / 8, self.height / 5.4)
-        qr = self.frameGeometry()
-        qr.moveCenter(self.parent.geometry().center())
-        self.move(qr.topLeft())
+        self.setFixedSize(self.reso_width / 8, 0)
+        parent_geo = self.parent.geometry()
+        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, parent_geo.y() + (parent_geo.height() - self.width()) / 2)
         
         self.settings.beginGroup('ClientSetting')
         self.Lserver_ip = QLabel('接收端IP')
@@ -622,13 +633,12 @@ class ServerSettingDialog(QWidget):
     def initUI(self):
         self.setWindowModality(Qt.ApplicationModal)
         self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.height = self.resolution.height()
-        self.width = self.resolution.width()
+        self.reso_height = self.resolution.height()
+        self.reso_width = self.resolution.width()
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.setFixedSize(self.width / 8, self.height / 4.8)
-        qr = self.frameGeometry()
-        qr.moveCenter(self.parent.geometry().center())
-        self.move(qr.topLeft())
+        self.setFixedSize(self.reso_width / 8, 0)
+        parent_geo = self.parent.geometry()
+        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, parent_geo.y() + (parent_geo.height() - self.width()) / 2)
         
         self.settings.beginGroup('ServerSetting')
         self.Lincoming_ip = QLabel('呼入IP')
@@ -738,16 +748,15 @@ class UIDialog(QWidget):
     def initUI(self):
         self.setWindowModality(Qt.ApplicationModal)
         self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.height = self.resolution.height()
-        self.width = self.resolution.width()
+        self.reso_height = self.resolution.height()
+        self.reso_width = self.resolution.width()
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.setFixedSize(self.width / 8, self.height / 10.8)
-        qr = self.frameGeometry()
-        qr.moveCenter(self.parent.geometry().center())
-        self.move(qr.topLeft())
+        self.setFixedSize(self.reso_width / 8, 0)
+        parent_geo = self.parent.geometry()
+        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, parent_geo.y() + (parent_geo.height() - self.width()) / 2)
         
         self.settings.beginGroup('UISetting')
-        self.Lview = QLabel('启用详细视图(重启生效)')
+        self.Lview = QLabel('启用详细视图(重启后生效)')
         self.Cview = QCheckBox(self)
         setting_view = int(self.settings.value('detail_view', False))
         self.Cview.setChecked(setting_view)

@@ -48,7 +48,6 @@ class ClientProtocol:
         self.loop = loop
         self.now = next(gener)
         self.md5 = None
-        #self.thread_md5 = None
         self.transport = None
         self.on_con_lost = loop.create_future()
         self.time_counter = self.loop.call_later(30, self.on_con_lost.set_result, True)
