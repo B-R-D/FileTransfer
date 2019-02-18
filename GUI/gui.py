@@ -1,6 +1,7 @@
 # coding:utf-8
 '''
 UDP客户端GUI版
+改进：增加一键清空列表
 '''
 import os, sys, functools, queue
 from multiprocessing import Process, Queue
@@ -75,10 +76,14 @@ class ClientWindow(QMainWindow):
     包含成员方法：简明/详细视图，
     '''
     def __init__(self):
-        # 初始化文件列表：存放待发送文件的绝对路径
+        # 初始化发送/接收文件列表：存放待发送文件的绝对路径
         self.files = []
-        # 初始化进程间通信队列
-        self.que = Queue()
+        self.received_files = []
+        self.succeed_files = []
+        self.failed_files = []
+        # 初始化进程间通信队列：发送端和接收端
+        self.client_que = Queue()
+        self.server_que = Queue()
         super().__init__()
         # 初始化设置ini文件
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
@@ -180,12 +185,12 @@ class ClientWindow(QMainWindow):
             setting_bind_port = int(self.settings.value('bind_port', 54321))
             setting_receive_dir = self.settings.value('receive_dir', os.path.abspath('.'))
             self.settings.endGroup()
-            self.server_starter = Process(target=server.starter, args=(setting_incoming_ip, setting_bind_port, setting_receive_dir, self.que))
+            self.server_starter = Process(target=server.starter, args=(setting_incoming_ip, setting_bind_port, setting_receive_dir, self.server_que))
             self.server_starter.start()
             # 循环读取服务端信息
             self.server_timer = QTimer()
             self.server_timer.timeout.connect(self.serverStatus)
-            self.server_timer.start(50)
+            self.server_timer.start(100)
     
     def simple_viewer(self):
         '''简明视图构建：包含按钮及进度条'''
@@ -231,8 +236,8 @@ class ClientWindow(QMainWindow):
             file_name = []
         self.file_table.setColumnCount(5)
         self.file_table.setRowCount(len(self.files))
-        self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
+        self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         for inst in self.files:
             if inst.getFileName() not in file_name:
                 prog_widget = QWidget()
@@ -262,8 +267,12 @@ class ClientWindow(QMainWindow):
                 self.file_table.setItem(index, 2, file_prog)
                 self.file_table.setItem(index, 3, file_size)
                 self.file_table.setItem(index, 4, file_status)
-        self.file_table.resizeColumnsToContents()
+        self.file_table.resizeColumnToContents(0)
+        self.file_table.resizeColumnToContents(2)
+        self.file_table.resizeColumnToContents(3)
+        self.file_table.resizeColumnToContents(4)
         self.file_table.show()
+        
         for inst in self.files:
             inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1)))
 
@@ -311,7 +320,7 @@ class ClientWindow(QMainWindow):
             # 构建绝对路径列表并启动传输子进程，无法启动的异常反映在状态栏
             path_list = [inst.getFilePath() for inst in self.files]
             try:
-                self.file_sender = Process(target=client.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.que))
+                self.file_sender = Process(target=client.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
                 self.file_sender.start()
                 self.Lclient_status.setText('传输中：<font color=green>0<font color=black>/<font color=red>0<font color=black>/{0} (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'.format(len(self.findInstanceByStatus('uploading'))))
             except Exception as e:
@@ -325,7 +334,7 @@ class ClientWindow(QMainWindow):
         '''传输过程管理及进度条更新'''
         try:
             # 无阻塞读取信息队列
-            message = self.que.get(block=False)
+            message = self.client_que.get(block=False)
             if message['type'] == 'info':
                 # 从传输设置中调用是否删除源文件
                 self.settings.beginGroup('ClientSetting')
@@ -382,13 +391,20 @@ class ClientWindow(QMainWindow):
     def serverStatus(self):
         '''启动时循环读取服务端状态'''
         try:
-            message = self.que.get(block=False)
+            message = self.server_que.get(block=False)
             if message['message'] == 'error':
                 self.Lserver_status.setText(message['detail'])
-                self.server_timer.stop()
             elif message['message'] == 'ready':
                 self.Lserver_status.setText('服务端已就绪')
-                self.server_timer.stop()
+            elif message['message'] == 'MD5_passed':
+                self.succeed_files.append(message['message'])
+                self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+            elif message['message'] == 'MD5_failed':
+                self.failed_files.append(message['message'])
+                self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+            elif message['message'] == 'started':
+                self.received_files.append(message['message'])
+                self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
         except queue.Empty:
             pass
     

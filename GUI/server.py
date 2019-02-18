@@ -34,6 +34,7 @@ class ServerProtocol:
                 # 新建计时器记录
                 if info['name'] not in self.time_counter:
                     self.time_counter[info['name']] = {}
+                    self.que.put({'type':'server_info', 'message':'started', 'name':info['name']})
                     self.message_sender({'type':'message','data':'get','name':info['name'],'part':0}, addr)
             elif info['data'] == 'terminated':
                 print('\nConnection terminated successfully.\n')
@@ -78,9 +79,11 @@ class ServerProtocol:
                 md5.update(line)
         if md5.hexdigest() == info['md5']:
             self.transport.sendto(json.dumps({'type':'message','name':info['name'],'data':'MD5_passed'}).encode(), addr)
+            self.que.put({'type':'server_info', 'message':'MD5_passed', 'name':info['name']})
             print('\n', info['name'], 'MD5 checking passed.\n')
         else:
             self.transport.sendto(json.dumps({'type':'message','name':info['name'],'data':'MD5_failed'}).encode(), addr)
+            self.que.put({'type':'server_info','message':'MD5_failed', 'name':info['name']})
             print('\n', info['name'], 'MD5 checking failed.\n')
         
 async def main(incoming_ip, bind_port, dir, que):
