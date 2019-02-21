@@ -10,7 +10,7 @@ import client, server
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication
 from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox, QStatusBar 
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox, QStatusBar, QSplitter, QFrame, QDoubleSpinBox
 
 class FileStatus:
     '''
@@ -142,17 +142,31 @@ class ClientWindow(QMainWindow):
         self.Bsend = QPushButton('发送', self)
         self.Bsend.clicked.connect(self.fileChecker)
         
-        # 定义垂直布局的窗口主控件
-        self.widget = QWidget()
-        self.setCentralWidget(self.widget)
+        # 定义垂直布局
         self.vbox = QVBoxLayout()
         self.vbox.setSpacing(self.height / 70)
         self.vbox.addWidget(self.Bselector)
         self.vbox.addWidget(self.file_table)
         self.vbox.addWidget(self.Lfile_empty)
         self.vbox.addWidget(self.Bsend)
-        self.widget.setLayout(self.vbox)
         
+        # 定义文件传输区域及消息传输区域
+        self.sender_frame = QFrame()
+        self.sender_frame.setLayout(self.vbox)
+        self.char_frame = QFrame()
+        self.char_frame.setFrameShape(QFrame.StyledPanel)
+        self.spliter = MessageArea(Qt.Horizontal, self)
+        self.spliter.setHandleWidth(10)
+        self.spliter.splitterMoved.connect(self.resizeEvent)
+        
+        self.spliter.addWidget(self.sender_frame)
+        self.spliter.addWidget(self.char_frame)
+        self.spliter.setSizes([self.width, 0])
+
+        # 定义窗口主控件
+        self.widget = QWidget()
+        self.setCentralWidget(self.spliter)
+
         # 创建状态栏
         self.statusbar = self.statusBar()
         self.statusbar.setSizeGripEnabled(False)
@@ -167,9 +181,9 @@ class ClientWindow(QMainWindow):
         self.setting_detail_view = int(self.settings.value('detail_view', False))
         self.settings.endGroup()
         if not self.setting_detail_view:
-            self.setMinimumWidth(self.width / 7.68)
+            self.sender_frame.setMinimumWidth(self.width / 7.68)
         else:
-            self.setMinimumWidth(self.width / 6.18)
+            self.sender_frame.setMinimumWidth(self.width / 6.18)
         
         self.setWindowTitle('FileTransfer')
         self.show()
@@ -247,7 +261,10 @@ class ClientWindow(QMainWindow):
                 prog_stack.setStackingMode(QStackedLayout.StackAll)
                 prog_widget.setLayout(prog_stack)
                 inst.getFileLabel().setText(inst.getFileName())
+                # 定义按钮点击删除，长按全清的行为
                 inst.getFileButton().clicked.connect(functools.partial(self.del_file, inst))
+                inst.getFileButton().pressed.connect(self.button_pressed)
+                inst.getFileButton().released.connect(self.button_released)
 
                 # 设置各单元格样式：不可选中且VH居中
                 file_prog = QTableWidgetItem('0.00 %')
@@ -275,7 +292,24 @@ class ClientWindow(QMainWindow):
         
         for inst in self.files:
             inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1)))
-
+    
+    def button_pressed(self):
+        self.settings.beginGroup('ClientSetting')
+        setting_del_timeout = float(self.settings.value('del_timeout', 1))
+        self.settings.endGroup()
+        self.button_timer = QTimer()
+        self.button_timer.timeout.connect(self.remove_all)
+        self.button_timer.setSingleShot(True)
+        self.button_timer.start(setting_del_timeout * 1000)
+    
+    def button_released(self):
+        self.button_timer.stop()
+        
+    def remove_all(self):
+        # 批量删除时需要从末尾开始逐个删除
+        for i in range(len(self.files), 0, -1):
+            self.del_file(self.files[i - 1])
+    
     def shorten_filename(self, name, width):
         '''根据给定的宽度截断文件名并添加...，返回截断后的文件名'''
         # 从第n个字符开始计算长度并添加...
@@ -523,6 +557,15 @@ class ClientWindow(QMainWindow):
             changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
             inst.getFileLabel().setText(changed_text)
 
+class MessageArea(QSplitter):
+    def __init__(self, orientation, parent):
+        super().__init__(orientation, parent)
+        self.parent = parent
+        self.initUI()
+    def initUI(self):
+        def resizeEvent(self, event):
+            self.parent.resizeEvent(event)
+
 class ClientSettingDialog(QWidget):
     '''
     发送端设置对话框(模态)。
@@ -579,12 +622,22 @@ class ClientSettingDialog(QWidget):
         self.Cdel_source = QCheckBox(self)
         setting_del_source = int(self.settings.value('del_source', False))
         self.Cdel_source.setChecked(setting_del_source)
+        self.Ldel_timeout = QLabel('长按清空延时(秒)')
+        self.Sdel_timeout = QDoubleSpinBox(self)
+        self.Sdel_timeout.setRange(0.5, 3)
+        self.Sdel_timeout.setSingleStep(0.1)
+        self.Sdel_timeout.setDecimals(1)
+        self.Sdel_timeout.setWrapping(True)
+        self.Sdel_timeout.setContextMenuPolicy(Qt.NoContextMenu)
+        setting_del_timeout = float(self.settings.value('del_timeout', 1))
+        self.Sdel_timeout.setValue(setting_del_timeout)
         self.settings.endGroup()
         
         self.Gtrans = QGroupBox('传输设置')
         trans_form = QFormLayout()
         trans_form.setSpacing(10)
         trans_form.addRow(self.Lfile_num, self.Sfile_num)
+        trans_form.addRow(self.Ldel_timeout, self.Sdel_timeout)
         trans_form.addRow(self.Ldel_source, self.Cdel_source)
         self.Gtrans.setLayout(trans_form)
         
@@ -625,6 +678,7 @@ class ClientSettingDialog(QWidget):
             self.settings.setValue('server_port', self.Sserver_port.value())
             self.settings.setValue('file_at_same_time', self.Sfile_num.value())
             self.settings.setValue('del_source', int(self.Cdel_source.isChecked()))
+            self.settings.setValue('del_timeout', self.Sdel_timeout.value())
             self.settings.sync()
             self.settings.endGroup()
             self.close()
