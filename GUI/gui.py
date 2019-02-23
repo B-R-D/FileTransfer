@@ -104,12 +104,13 @@ class ClientWindow(QMainWindow):
         
         # 定义文件传输区域及消息传输区域
         self.sender_frame = QFrame()
-        self.chart_frame = QFrame()
+        self.chat_frame = QFrame()
         self.spliter = WindowSplitter(Qt.Horizontal, self)
-        self.spliter.setHandleWidth(self.width / 192)
+        self.spliter.setHandleWidth(self.width / 384)
         self.spliter.splitterMoved.connect(self.resizeEvent)
         self.spliter.addWidget(self.sender_frame)
-        self.spliter.addWidget(self.chart_frame)
+        self.spliter.addWidget(self.chat_frame)
+        self.spliter.handle(1).setStyleSheet('QSplitterHandle{background-color: rgb(210,210,210)}')
         
         # 定义窗口主控件
         self.widget = QWidget()
@@ -149,7 +150,6 @@ class ClientWindow(QMainWindow):
         self.Lserver_status = QLabel('接收端未启动')
         self.statusbar.addWidget(self.Lclient_status, 1)
         self.statusbar.addWidget(self.Lserver_status, 1)
-        self.statusBarChecker()
 
         # 定义传输控件：选择按钮(默认按钮)，空区域(左上对齐)，文件列表(单元格不可选择)，发送按钮
         self.Bselector = QPushButton('选择文件', self)
@@ -181,21 +181,20 @@ class ClientWindow(QMainWindow):
         self.Emessage_writer.setPlaceholderText('输入消息')
         self.Emessage_writer.setContextMenuPolicy(Qt.NoContextMenu)
         self.Bfolder = QPushButton('<< 收起', self)
-        self.Bfolder.clicked.connect(functools.partial(self.spliter.setSizes, [self.width, 0]))
+        self.Bfolder.clicked.connect(functools.partial(self.spliter.setSizes, [self.geometry().width(), 0]))
         self.Bmessage_sender = QPushButton('发送', self)
         
         # 定义消息区域垂直布局
-        self.chart_vbox = QVBoxLayout()
-        self.chart_vbox.setSpacing(self.height / 70)
-        self.chart_vbox.addWidget(self.Emessage_area)
-        self.chart_vbox.addWidget(self.Emessage_writer)
-        self.chart_hbox = QHBoxLayout()
-        self.chart_hbox.addWidget(self.Bfolder)
-        self.chart_hbox.addStretch(1)
-        self.chart_hbox.addWidget(self.Bmessage_sender)
-        self.chart_vbox.addLayout(self.chart_hbox)
-        self.chart_frame.setLayout(self.chart_vbox)
-        self.spliter.setSizes([self.width, 0])
+        self.chat_vbox = QVBoxLayout()
+        self.chat_vbox.setSpacing(self.height / 70)
+        self.chat_vbox.addWidget(self.Emessage_area)
+        self.chat_vbox.addWidget(self.Emessage_writer)
+        self.chat_hbox = QHBoxLayout()
+        self.chat_hbox.addWidget(self.Bfolder)
+        self.chat_hbox.addStretch(1)
+        self.chat_hbox.addWidget(self.Bmessage_sender)
+        self.chat_vbox.addLayout(self.chat_hbox)
+        self.chat_frame.setLayout(self.chat_vbox)
         
         # 从设置中读取视图设定并设定窗口最小值
         self.settings.beginGroup('UISetting')
@@ -204,7 +203,12 @@ class ClientWindow(QMainWindow):
         if not self.setting_detail_view:
             self.sender_frame.setMinimumWidth(self.width / 7.68)
         else:
-            self.sender_frame.setMinimumWidth(self.width / 6.18)
+            self.sender_frame.setMinimumWidth(self.width / 6)
+        self.uiSettingChecker()
+        self.settings.beginGroup('Misc')
+        self.setting_frame_width = self.settings.value('frame_width', (self.geometry().width(), 0))
+        self.settings.endGroup()
+        self.spliter.setSizes([self.setting_frame_width[0], self.setting_frame_width[1]])
         self.setWindowTitle('FileTransfer')
         self.show()
         
@@ -462,15 +466,20 @@ class ClientWindow(QMainWindow):
         except queue.Empty:
             pass
     
-    def statusBarChecker(self):
+    def uiSettingChecker(self):
         self.settings.beginGroup('UISetting')
         setting_status_bar = int(self.settings.value('status_bar', True))
+        setting_chat_frame = int(self.settings.value('chat_frame', True))
         self.settings.endGroup()
         if setting_status_bar:
             self.statusbar.show()
         else:
             self.statusbar.hide()
-    
+        if setting_chat_frame:
+            self.chat_frame.show()
+        else:
+            self.chat_frame.hide()
+        
     def safeClose(self):
         '''程序的关闭行为，触发closeEvent事件'''
         QCoreApplication.instance().quit
@@ -539,7 +548,7 @@ class ClientWindow(QMainWindow):
         '''UI设置对话框'''
         self.uisetting = UIDialog(self)
         self.uisetting.setAttribute(Qt.WA_DeleteOnClose)
-        self.uisetting.destroyed.connect(self.statusBarChecker)
+        self.uisetting.destroyed.connect(self.uiSettingChecker)
         self.uisetting.show()
             
     def closeEvent(self, event):
@@ -547,6 +556,7 @@ class ClientWindow(QMainWindow):
         # 记录关闭时的窗口尺寸
         self.settings.beginGroup('Misc')
         self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
+        self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
         self.settings.endGroup()
         try:
             # 关闭服务器，进度计时器和传输子进程
@@ -886,6 +896,12 @@ class UIDialog(QWidget):
         self.Cstatus_bar = QCheckBox(self)
         setting_status_bar = int(self.settings.value('status_bar', True))
         self.Cstatus_bar.setChecked(setting_status_bar)
+        
+        self.Lchat_frame = QLabel('启用聊天栏')
+        self.Cchat_frame = QCheckBox(self)
+        setting_chat_frame = int(self.settings.value('chat_frame', True))
+        self.Cchat_frame.setChecked(setting_chat_frame)
+        
         self.settings.endGroup()
         
         self.Bconfirm = QPushButton('确定', self)
@@ -899,6 +915,7 @@ class UIDialog(QWidget):
         form.setSpacing(30)
         form.addRow(self.Lview, self.Cview)
         form.addRow(self.Lstatus_bar, self.Cstatus_bar)
+        form.addRow(self.Lchat_frame, self.Cchat_frame)
         hbox = QHBoxLayout()
         hbox.addStretch(1)
         hbox.addWidget(self.Bconfirm)
@@ -912,6 +929,7 @@ class UIDialog(QWidget):
         self.settings.beginGroup('UISetting')
         self.settings.setValue('detail_view', int(self.Cview.isChecked()))
         self.settings.setValue('status_bar', int(self.Cstatus_bar.isChecked()))
+        self.settings.setValue('chat_frame', int(self.Cchat_frame.isChecked()))
         self.settings.sync()
         self.settings.endGroup()
         self.close()
