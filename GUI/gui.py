@@ -1,7 +1,6 @@
 # coding:utf-8
 '''
 UDP客户端GUI版
-改进：增加一键清空列表
 '''
 import os, sys, functools, queue
 from multiprocessing import Process, Queue
@@ -10,7 +9,7 @@ import client, server
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication
 from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget
-from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox, QStatusBar, QSplitter, QFrame, QDoubleSpinBox
+from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QTextEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox, QStatusBar, QSplitter, QFrame, QDoubleSpinBox, QMenu
 
 class FileStatus:
     '''
@@ -103,6 +102,19 @@ class ClientWindow(QMainWindow):
         # 在屏幕中央(不含开始菜单栏)打开窗口
         self.frameGeometry().moveCenter(self.resolution.center())
         
+        # 定义文件传输区域及消息传输区域
+        self.sender_frame = QFrame()
+        self.chart_frame = QFrame()
+        self.spliter = WindowSplitter(Qt.Horizontal, self)
+        self.spliter.setHandleWidth(self.width / 192)
+        self.spliter.splitterMoved.connect(self.resizeEvent)
+        self.spliter.addWidget(self.sender_frame)
+        self.spliter.addWidget(self.chart_frame)
+        
+        # 定义窗口主控件
+        self.widget = QWidget()
+        self.setCentralWidget(self.spliter)
+        
         # 定义菜单栏：文件，设置
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('文件(&F)')
@@ -129,44 +141,7 @@ class ClientWindow(QMainWindow):
         clientAct.triggered.connect(self.clientSettingDialog)
         serverAct.triggered.connect(self.serverSettingDialog)
         uiAct.triggered.connect(self.uiSettingDialog)
-
-        # 定义控件：选择按钮(默认按钮)，空区域(左上对齐)，文件列表(单元格不可选择)，发送按钮
-        self.Bselector = QPushButton('选择文件', self)
-        self.Bselector.setDefault(True)
-        self.Bselector.clicked.connect(self.fileDialog)
-        self.Lfile_empty = QLabel('未选中文件')
-        self.Lfile_empty.setAlignment(Qt.AlignTop)
-        self.file_table = QTableWidget()
-        self.file_table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.file_table.hide()
-        self.Bsend = QPushButton('发送', self)
-        self.Bsend.clicked.connect(self.fileChecker)
         
-        # 定义垂直布局
-        self.vbox = QVBoxLayout()
-        self.vbox.setSpacing(self.height / 70)
-        self.vbox.addWidget(self.Bselector)
-        self.vbox.addWidget(self.file_table)
-        self.vbox.addWidget(self.Lfile_empty)
-        self.vbox.addWidget(self.Bsend)
-        
-        # 定义文件传输区域及消息传输区域
-        self.sender_frame = QFrame()
-        self.sender_frame.setLayout(self.vbox)
-        self.char_frame = QFrame()
-        self.char_frame.setFrameShape(QFrame.StyledPanel)
-        self.spliter = MessageArea(Qt.Horizontal, self)
-        self.spliter.setHandleWidth(10)
-        self.spliter.splitterMoved.connect(self.resizeEvent)
-        
-        self.spliter.addWidget(self.sender_frame)
-        self.spliter.addWidget(self.char_frame)
-        self.spliter.setSizes([self.width, 0])
-
-        # 定义窗口主控件
-        self.widget = QWidget()
-        self.setCentralWidget(self.spliter)
-
         # 创建状态栏
         self.statusbar = self.statusBar()
         self.statusbar.setSizeGripEnabled(False)
@@ -175,6 +150,52 @@ class ClientWindow(QMainWindow):
         self.statusbar.addWidget(self.Lclient_status, 1)
         self.statusbar.addWidget(self.Lserver_status, 1)
         self.statusBarChecker()
+
+        # 定义传输控件：选择按钮(默认按钮)，空区域(左上对齐)，文件列表(单元格不可选择)，发送按钮
+        self.Bselector = QPushButton('选择文件', self)
+        self.Bselector.setDefault(True)
+        self.Bselector.clicked.connect(self.fileDialog)
+        self.Lfile_empty = QLabel('未选中文件')
+        self.Lfile_empty.setAlignment(Qt.AlignTop)
+        self.file_table = QTableWidget()
+        self.file_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.file_table.hide()
+        self.Bfile_sender = QPushButton('发送', self)
+        self.Bfile_sender.clicked.connect(self.fileChecker)
+        
+        # 定义传输区域垂直布局
+        self.vbox = QVBoxLayout()
+        self.vbox.setSpacing(self.height / 70)
+        self.vbox.addWidget(self.Bselector)
+        self.vbox.addWidget(self.file_table)
+        self.vbox.addWidget(self.Lfile_empty)
+        self.vbox.addWidget(self.Bfile_sender)
+        self.sender_frame.setLayout(self.vbox)
+        
+        # 定义消息控件：消息显示区域，发送文本框，发送/收起按钮
+        self.Emessage_area = MessageDisplayEdit(self)
+        self.Emessage_area.setContextMenuPolicy(Qt.DefaultContextMenu)
+        self.Emessage_area.setReadOnly(True)
+        self.Emessage_area.setText('测试消息1\n测试消息2')
+        self.Emessage_writer = QLineEdit(self)
+        self.Emessage_writer.setPlaceholderText('输入消息')
+        self.Emessage_writer.setContextMenuPolicy(Qt.NoContextMenu)
+        self.Bfolder = QPushButton('<< 收起', self)
+        self.Bfolder.clicked.connect(functools.partial(self.spliter.setSizes, [self.width, 0]))
+        self.Bmessage_sender = QPushButton('发送', self)
+        
+        # 定义消息区域垂直布局
+        self.chart_vbox = QVBoxLayout()
+        self.chart_vbox.setSpacing(self.height / 70)
+        self.chart_vbox.addWidget(self.Emessage_area)
+        self.chart_vbox.addWidget(self.Emessage_writer)
+        self.chart_hbox = QHBoxLayout()
+        self.chart_hbox.addWidget(self.Bfolder)
+        self.chart_hbox.addStretch(1)
+        self.chart_hbox.addWidget(self.Bmessage_sender)
+        self.chart_vbox.addLayout(self.chart_hbox)
+        self.chart_frame.setLayout(self.chart_vbox)
+        self.spliter.setSizes([self.width, 0])
         
         # 从设置中读取视图设定并设定窗口最小值
         self.settings.beginGroup('UISetting')
@@ -184,7 +205,6 @@ class ClientWindow(QMainWindow):
             self.sender_frame.setMinimumWidth(self.width / 7.68)
         else:
             self.sender_frame.setMinimumWidth(self.width / 6.18)
-        
         self.setWindowTitle('FileTransfer')
         self.show()
         
@@ -557,15 +577,47 @@ class ClientWindow(QMainWindow):
             changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
             inst.getFileLabel().setText(changed_text)
 
-class MessageArea(QSplitter):
+class WindowSplitter(QSplitter):
     def __init__(self, orientation, parent):
         super().__init__(orientation, parent)
-        self.parent = parent
         self.initUI()
     def initUI(self):
         def resizeEvent(self, event):
-            self.parent.resizeEvent(event)
+            parent.resizeEvent(event)
 
+class MessageDisplayEdit(QTextEdit):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.copy_flag = False
+        self.initUI()
+    def initUI(self):
+        pass
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        select_allAct = menu.addAction('全选')
+        copyAct = menu.addAction('复制')
+        menu.addSeparator()
+        clearAct = menu.addAction('清空')
+        # 将是否可以复制的状态记录到类变量中
+        super().copyAvailable.connect(self.copyController)
+        if not super().toPlainText():
+            select_allAct.setEnabled(False)
+            copyAct.setEnabled(False)
+            clearAct.setEnabled(False)
+        else:
+            copyAct.setEnabled(self.copy_flag)
+        action = menu.exec(self.mapToGlobal(event.pos()))
+        # 选择行为
+        if action == copyAct:
+            super().copy()
+        elif action == select_allAct:
+            super().selectAll()
+        elif action == clearAct:
+            super().clear()
+    def copyController(self, yes):
+        '''复制状态记录函数'''
+        self.copy_flag = yes
+            
 class ClientSettingDialog(QWidget):
     '''
     发送端设置对话框(模态)。
