@@ -34,7 +34,7 @@ class ClientProtocol:
             if message['data'] == 'get' and message['message'] == self.message:
                 # 接收到成功回包则回传成功消息
                 self.time_counter.cancel()
-                self.que.put({'type':'chat', 'message':'success'})
+                self.que.put({'type':'chat', 'status':'success'})
 
     def error_received(self, exc):
         '''异常处理函数，先忽略'''

@@ -356,12 +356,13 @@ class ClientWindow(QMainWindow):
 
     def chatChecker(self):
         if self.Emessage_writer.text():
-            self.Emessage_area.append('本机(localhost)：\n\t{0}'.format(self.Emessage_writer.text()))
+            self.Emessage_area.append('\n本机(localhost)：\n\t{0}'.format(self.Emessage_writer.text()))
             self.settings.beginGroup('ClientSetting')
             setting_host = self.settings.value('host', '127.0.0.1')
             setting_port = int(self.settings.value('server_port', 12345))
             self.settings.endGroup()
-            self.chat_sender = Process(target=chat_client.chat_starter, args=(setting_host, setting_port, self.Emessage_writer.text(), self.client_que))
+            # 由于客户端的消息队列只在发送时读取，必须传入服务器的消息队列
+            self.chat_sender = Process(target=chat_client.chat_starter, args=(setting_host, setting_port, self.Emessage_writer.text(), self.server_que))
             self.chat_sender.start()
             self.Emessage_writer.clear()
             
@@ -477,8 +478,11 @@ class ClientWindow(QMainWindow):
                     self.received_files.append(message['message'])
                     self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
             elif message['type'] == 'chat':
-                self.Emessage_area.append('{0}：\n\t{1}'.format(message['from'], message['message']))
-                self.Lserver_status.setText('收到来自{0}的聊天消息'.format(message['from']))
+                if message['status'] == 'success':
+                    self.Emessage_area.append('<font color=green> ✓')
+                else:
+                    self.Emessage_area.append('\n{0}：\n\t{1}'.format(message['from'], message['message']))
+                    self.Lserver_status.setText('收到来自{0}的聊天消息'.format(message['from']))
         except queue.Empty:
             pass
     

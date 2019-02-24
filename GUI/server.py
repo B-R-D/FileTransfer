@@ -54,7 +54,7 @@ class ServerProtocol:
                     print('\nFile: {0}({1}) transmission complete.\n'.format(info['name'], display_file_length(info['size'])))
         elif info['type'] == 'chat':
             self.que.put({'type':'chat', 'message':info['message'], 'from':self.transport.get_extra_info('peername')})
-            self.message_sender({'type':'chat','message':info['message'],'data':'get'}, addr)
+            self.transport.sendto({'type':'chat','message':info['message'],'data':'get'}, addr)
     
     def connection_lost(self, exc):
         print('Server terminated.')
