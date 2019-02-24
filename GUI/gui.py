@@ -7,7 +7,7 @@ from multiprocessing import Process, Queue
 import trans_client, server, chat_client
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
-from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication
+from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication, QTextCursor, QColor
 from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget
 from PyQt5.QtWidgets import QPushButton, QLabel, QDialog, QFileDialog, QLineEdit, QTextEdit, QAction, QMessageBox, QToolTip, QSpinBox, QProgressBar, QCheckBox, QTableWidgetItem, QAbstractItemView, QHeaderView, QGroupBox, QStatusBar, QSplitter, QFrame, QDoubleSpinBox, QMenu
 
@@ -356,7 +356,7 @@ class ClientWindow(QMainWindow):
 
     def chatChecker(self):
         if self.Emessage_writer.text():
-            self.Emessage_area.append('\n本机(localhost)：\n\t{0}'.format(self.Emessage_writer.text()))
+            self.Emessage_area.append('本机(localhost)：\n    {0}'.format(self.Emessage_writer.text()))
             self.settings.beginGroup('ClientSetting')
             setting_host = self.settings.value('host', '127.0.0.1')
             setting_port = int(self.settings.value('server_port', 12345))
@@ -479,9 +479,12 @@ class ClientWindow(QMainWindow):
                     self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
             elif message['type'] == 'chat':
                 if message['status'] == 'success':
-                    self.Emessage_area.append('<font color=green> ✓')
-                else:
-                    self.Emessage_area.append('\n{0}：\n\t{1}'.format(message['from'], message['message']))
+                    self.chat_sender.terminate()
+                    self.chat_sender.join()
+                    self.Emessage_area.moveCursor(QTextCursor.End)
+                    self.Emessage_area.insertHtml('<font color=green> ✓<font color=black> ')
+                elif message['status'] == 'received':
+                    self.Emessage_area.append('{0}：\n    {1}'.format(message['from'], message['message']))
                     self.Lserver_status.setText('收到来自{0}的聊天消息'.format(message['from']))
         except queue.Empty:
             pass
@@ -603,6 +606,7 @@ class ClientWindow(QMainWindow):
             self.chat_sender.terminate()
             self.chat_sender.join()
             self.chat_sender.close()
+            print(self.chat_sender.is_alive())
         except ValueError as e:
             print('走聊天ValueError', repr(e))
             pass

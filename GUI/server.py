@@ -26,6 +26,7 @@ class ServerProtocol:
     
     def connection_made(self, transport):
         self.transport = transport
+        print(transport.get_extra_info('peername'))
 
     def datagram_received(self, data, addr):
         info = json.loads(data.split(b'---+++data+++---')[0])
@@ -53,8 +54,8 @@ class ServerProtocol:
                     self.transport.sendto(json.dumps({'type':'message','data':'complete','name':info['name']}).encode(), addr)
                     print('\nFile: {0}({1}) transmission complete.\n'.format(info['name'], display_file_length(info['size'])))
         elif info['type'] == 'chat':
-            self.que.put({'type':'chat', 'message':info['message'], 'from':self.transport.get_extra_info('peername')})
-            self.transport.sendto({'type':'chat','message':info['message'],'data':'get'}, addr)
+            self.que.put({'type':'chat', 'status':'received', 'message':info['message'], 'from':addr})
+            self.transport.sendto(json.dumps({'type':'chat','message':info['message'],'data':'get'}).encode(), addr)
     
     def connection_lost(self, exc):
         print('Server terminated.')

@@ -42,24 +42,15 @@ class ClientProtocol:
         
     def connection_lost(self, exc):
         '''连接断开时的行为：现在不会调用'''
-        print('Message {0} sending complete.\n'.format(self.message))
+        print('Message sending complete.\n')
         self.on_con_lost.set_result(True)
         
     def chat_sender(self):
         '''数据报的发送行为'''
         cdata = json.dumps({'type':'chat','message':self.message}).encode()
         print('Sending message to {0}: {1}...'.format(self.transport.get_extra_info('peername'), self.message), end='')
-        self.message_sender(cdata)
+        self.transport.sendto(cdata)
     
-    def message_sender(self, message):
-        '''
-        自带随机秒重发机制的消息回发(至少0.2s)
-        注意此处传入的参数必须是用json打包好的
-        '''
-        self.time_counter.cancel()
-        self.transport.sendto(message)
-        self.time_counter = self.loop.call_later(0.2 + random.random(), self.message_sender, message)
-
 async def chat_main(host, port, message, que):
     '''
     传输控制类实例构造函数，传输端点在此关闭。
