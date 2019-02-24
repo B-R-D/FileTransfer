@@ -50,7 +50,7 @@ class ClientProtocol:
         self.md5 = None
         self.transport = None
         self.on_con_lost = loop.create_future()
-        self.time_counter = self.loop.call_later(30, self.on_con_lost.set_result, True)
+        self.time_counter = self.loop.call_later(20, self.on_con_lost.set_result, True)
 
     def connection_made(self, transport):
         '''
@@ -136,7 +136,7 @@ class ClientProtocol:
                 md5.update(line)
         self.md5 = md5.hexdigest()
 
-async def main(host, port, path, threading_controller, que):
+async def file_main(host, port, path, threading_controller, que):
     '''
     传输控制类实例构造函数，传输端点在此关闭。
     控制变量：同时运行的线程数
@@ -153,7 +153,7 @@ async def main(host, port, path, threading_controller, que):
         finally:
             transport.close()
 
-def thread_starter(host, port, file, file_at_same_time, que):
+def file_thread(host, port, file, file_at_same_time, que):
     '''
     传输线程启动函数。
     控制变量：同时运行的线程数
@@ -161,6 +161,6 @@ def thread_starter(host, port, file, file_at_same_time, que):
     '''
     threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
     for path in file:
-        thread_asyncio = threading.Thread(target=asyncio.run, args=(main(host, port, path, threading_controller, que),))
+        thread_asyncio = threading.Thread(target=asyncio.run, args=(file_main(host, port, path, threading_controller, que),))
         thread_asyncio.start()
     thread_asyncio.join()

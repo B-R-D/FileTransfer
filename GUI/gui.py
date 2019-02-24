@@ -4,7 +4,7 @@ UDP客户端GUI版
 '''
 import os, sys, functools, queue
 from multiprocessing import Process, Queue
-import client, server
+import trans_client, server, chat_client
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication
@@ -42,7 +42,7 @@ class FileStatus:
     def getFileName(self):
         return self._name
     def getFileSize(self):
-        return client.display_file_length(self._size)
+        return trans_client.display_file_length(self._size)
     def getFileStatus(self):
         return self._status
     def getFileButton(self):
@@ -183,6 +183,7 @@ class ClientWindow(QMainWindow):
         self.Bfolder = QPushButton('<< 收起', self)
         self.Bfolder.clicked.connect(functools.partial(self.spliter.setSizes, [self.geometry().width(), 0]))
         self.Bmessage_sender = QPushButton('发送', self)
+        self.Bmessage_sender.clicked.connect(self.chatChecker)
         
         # 定义消息区域垂直布局
         self.chat_vbox = QVBoxLayout()
@@ -353,6 +354,17 @@ class ClientWindow(QMainWindow):
             self.file_table.hide()
             self.Lfile_empty.show()
 
+    def chatChecker(self):
+        if self.Emessage_writer.text():
+            self.Emessage_area.append('本机(localhost)：\n\t{0}'.format(self.Emessage_writer.text()))
+            self.settings.beginGroup('ClientSetting')
+            setting_host = self.settings.value('host', '127.0.0.1')
+            setting_port = int(self.settings.value('server_port', 12345))
+            self.settings.endGroup()
+            self.chat_sender = Process(target=chat_client.chat_starter, args=(setting_host, setting_port, self.Emessage_writer.text(), self.client_que))
+            self.chat_sender.start()
+            self.Emessage_writer.clear()
+            
     def fileChecker(self):
         '''文件列表检查及客户端传输进程开启'''
         if not self.files:
@@ -378,7 +390,7 @@ class ClientWindow(QMainWindow):
             # 构建绝对路径列表并启动传输子进程，无法启动的异常反映在状态栏
             path_list = [inst.getFilePath() for inst in self.files]
             try:
-                self.file_sender = Process(target=client.thread_starter, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
+                self.file_sender = Process(target=trans_client.file_thread, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
                 self.file_sender.start()
                 self.Lclient_status.setText('传输中：<font color=green>0<font color=black>/<font color=red>0<font color=black>/{0} (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'.format(len(self.findInstanceByStatus('uploading'))))
             except Exception as e:
@@ -447,22 +459,26 @@ class ClientWindow(QMainWindow):
             pass
     
     def serverStatus(self):
-        '''启动时循环读取服务端状态'''
+        '''启动时循环读取服务端状态及更新聊天信息'''
         try:
             message = self.server_que.get(block=False)
-            if message['message'] == 'error':
-                self.Lserver_status.setText(message['detail'])
-            elif message['message'] == 'ready':
-                self.Lserver_status.setText('服务端已就绪')
-            elif message['message'] == 'MD5_passed':
-                self.succeed_files.append(message['message'])
-                self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
-            elif message['message'] == 'MD5_failed':
-                self.failed_files.append(message['message'])
-                self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
-            elif message['message'] == 'started':
-                self.received_files.append(message['message'])
-                self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+            if message['type'] == 'server_info':
+                if message['message'] == 'error':
+                    self.Lserver_status.setText(message['detail'])
+                elif message['message'] == 'ready':
+                    self.Lserver_status.setText('服务端已就绪')
+                elif message['message'] == 'MD5_passed':
+                    self.succeed_files.append(message['message'])
+                    self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+                elif message['message'] == 'MD5_failed':
+                    self.failed_files.append(message['message'])
+                    self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+                elif message['message'] == 'started':
+                    self.received_files.append(message['message'])
+                    self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+            elif message['type'] == 'chat':
+                self.Emessage_area.append('{0}：\n\t{1}'.format(message['from'], message['message']))
+                self.Lserver_status.setText('收到来自{0}的聊天消息'.format(message['from']))
         except queue.Empty:
             pass
     
@@ -560,6 +576,8 @@ class ClientWindow(QMainWindow):
         self.settings.endGroup()
         try:
             # 关闭服务器，进度计时器和传输子进程
+            self.server_timer.stop()
+            del self.server_timer
             self.server_starter.terminate()
             self.server_starter.join()
             self.server_starter.close()
@@ -568,13 +586,26 @@ class ClientWindow(QMainWindow):
             self.file_sender.terminate()
             self.file_sender.join()
             self.file_sender.close()
-        except ValueError:
+        except ValueError as e:
             # 忽略传输子进程已关闭时的异常
+            print('走ValueError', repr(e))
             pass
-        except AttributeError:
+        except AttributeError as e:
             # 忽略还未声明变量时的异常
+            print('走AttributeError', repr(e))
             pass
-
+        try:
+            # 关闭聊天子进程
+            self.chat_sender.terminate()
+            self.chat_sender.join()
+            self.chat_sender.close()
+        except ValueError as e:
+            print('走聊天ValueError', repr(e))
+            pass
+        except AttributeError as e:
+            print('走聊天AttributeError', repr(e))
+            pass
+    
     def keyPressEvent(self, k):
         '''按ESC时触发的关闭行为'''
         if k.key() == Qt.Key_Escape:
