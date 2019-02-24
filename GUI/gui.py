@@ -176,10 +176,9 @@ class ClientWindow(QMainWindow):
         self.Emessage_area = MessageDisplayEdit(self)
         self.Emessage_area.setContextMenuPolicy(Qt.DefaultContextMenu)
         self.Emessage_area.setReadOnly(True)
-        self.Emessage_area.setText('测试消息1\n测试消息2')
-        self.Emessage_writer = QLineEdit(self)
+        self.Emessage_writer = MessageWriter(self)
         self.Emessage_writer.setPlaceholderText('输入消息')
-        self.Emessage_writer.setContextMenuPolicy(Qt.NoContextMenu)
+        self.Emessage_writer.returnPressed.connect(self.chatChecker)
         self.Bfolder = QPushButton('<< 收起', self)
         self.Bfolder.clicked.connect(functools.partial(self.spliter.setSizes, [self.geometry().width(), 0]))
         self.Bmessage_sender = QPushButton('发送', self)
@@ -658,8 +657,8 @@ class MessageDisplayEdit(QTextEdit):
         menu.addSeparator()
         clearAct = menu.addAction('清空')
         # 将是否可以复制的状态记录到类变量中
-        super().copyAvailable.connect(self.copyController)
-        if not super().toPlainText():
+        self.copyAvailable.connect(self.copyController)
+        if not self.toPlainText():
             select_allAct.setEnabled(False)
             copyAct.setEnabled(False)
             clearAct.setEnabled(False)
@@ -668,15 +667,45 @@ class MessageDisplayEdit(QTextEdit):
         action = menu.exec(self.mapToGlobal(event.pos()))
         # 选择行为
         if action == copyAct:
-            super().copy()
+            self.copy()
         elif action == select_allAct:
-            super().selectAll()
+            self.selectAll()
         elif action == clearAct:
-            super().clear()
+            self.clear()
     def copyController(self, yes):
         '''复制状态记录函数'''
         self.copy_flag = yes
-            
+
+class MessageWriter(QLineEdit):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.initUI()
+    def initUI(self):
+        pass
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        select_allAct = menu.addAction('全选')
+        cutAct = menu.addAction('剪切')
+        copyAct = menu.addAction('复制')
+        pasteAct = menu.addAction('粘贴')
+        if not self.text():
+            select_allAct.setEnabled(False)
+            cutAct.setEnabled(False)
+            copyAct.setEnabled(False)
+        else:
+            cutAct.setEnabled(self.hasSelectedText())
+            copyAct.setEnabled(self.hasSelectedText())
+        action = menu.exec(self.mapToGlobal(event.pos()))
+        # 选择行为
+        if action == cutAct:
+            self.cut()
+        elif action == copyAct:
+            self.copy()
+        elif action == select_allAct:
+            self.selectAll()
+        elif action == pasteAct:
+            self.paste()
+        
 class ClientSettingDialog(QWidget):
     '''
     发送端设置对话框(模态)。
