@@ -26,7 +26,6 @@ class ServerProtocol:
     
     def connection_made(self, transport):
         self.transport = transport
-        print(transport.get_extra_info('peername'))
 
     def datagram_received(self, data, addr):
         info = json.loads(data.split(b'---+++data+++---')[0])

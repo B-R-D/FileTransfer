@@ -17,7 +17,7 @@ class ClientProtocol:
         self.loop = loop
         self.transport = None
         self.on_con_lost = loop.create_future()
-        self.time_counter = self.loop.call_later(20, self.on_con_lost.set_result, True)
+        self.time_counter = self.loop.call_later(10, self.on_con_lost.set_result, True)
 
     def connection_made(self, transport):
         '''连接建立并发送'''
@@ -41,9 +41,8 @@ class ClientProtocol:
         pass
         
     def connection_lost(self, exc):
-        '''连接断开时的行为：现在不会调用'''
-        print('Message sending complete.\n')
-        self.on_con_lost.set_result(True)
+        '''连接断开时的行为'''
+        self.que.put({'type':'chat', 'status':'failed'})
         
     def chat_sender(self):
         '''数据报的发送行为'''

@@ -50,7 +50,7 @@ class ClientProtocol:
         self.md5 = None
         self.transport = None
         self.on_con_lost = loop.create_future()
-        self.time_counter = self.loop.call_later(20, self.on_con_lost.set_result, True)
+        self.time_counter = self.loop.call_later(10, self.on_con_lost.set_result, True)
 
     def connection_made(self, transport):
         '''
@@ -100,8 +100,7 @@ class ClientProtocol:
         
     def connection_lost(self, exc):
         '''连接断开时的行为：现在不会调用'''
-        print('File:{0}({1}) transmission complete.\n'.format(self.now.name, display_file_length(self.now.size)))
-        self.on_con_lost.set_result(True)
+        pass
         
     def file_sender(self):
         '''数据报的发送行为'''

@@ -356,11 +356,20 @@ class ClientWindow(QMainWindow):
 
     def chatChecker(self):
         if self.Emessage_writer.text():
-            self.Emessage_area.append('本机(localhost)：\n    {0}'.format(self.Emessage_writer.text()))
             self.settings.beginGroup('ClientSetting')
             setting_host = self.settings.value('host', '127.0.0.1')
             setting_port = int(self.settings.value('server_port', 12345))
             self.settings.endGroup()
+            # 如有上个消息没发完就发新消息则结束掉上个子进程
+            try:
+                if self.chat_sender.is_alive():
+                    self.chat_sender.terminate()
+                    self.chat_sender.join()
+                    self.Emessage_area.moveCursor(QTextCursor.End)
+                    self.Emessage_area.insertHtml('<font color=red>✘<font color=black> ')
+            except AttributeError:
+                pass
+            self.Emessage_area.append('本机(localhost)：\n    {0} '.format(self.Emessage_writer.text()))
             # 由于客户端的消息队列只在发送时读取，必须传入服务器的消息队列
             self.chat_sender = Process(target=chat_client.chat_starter, args=(setting_host, setting_port, self.Emessage_writer.text(), self.server_que))
             self.chat_sender.start()
@@ -482,10 +491,15 @@ class ClientWindow(QMainWindow):
                     self.chat_sender.terminate()
                     self.chat_sender.join()
                     self.Emessage_area.moveCursor(QTextCursor.End)
-                    self.Emessage_area.insertHtml('<font color=green> ✓<font color=black> ')
+                    self.Emessage_area.insertHtml('<font color=green>✓<font color=black> ')
+                elif message['status'] == 'failed':
+                    self.chat_sender.terminate()
+                    self.chat_sender.join()
+                    self.Emessage_area.moveCursor(QTextCursor.End)
+                    self.Emessage_area.insertHtml('<font color=red>✘<font color=black> ')
                 elif message['status'] == 'received':
-                    self.Emessage_area.append('{0}：\n    {1}'.format(message['from'], message['message']))
-                    self.Lserver_status.setText('收到来自{0}的聊天消息'.format(message['from']))
+                    self.Emessage_area.append('{0}:{1}：\n    {2}'.format(message['from'][0], message['from'][1], message['message']))
+                    self.Lserver_status.setText('收到来自{0}:{1}的聊天消息'.format(message['from'][0], message['from'][1]))
         except queue.Empty:
             pass
     
@@ -593,13 +607,11 @@ class ClientWindow(QMainWindow):
             self.file_sender.terminate()
             self.file_sender.join()
             self.file_sender.close()
-        except ValueError as e:
+        except ValueError:
             # 忽略传输子进程已关闭时的异常
-            print('走ValueError', repr(e))
             pass
-        except AttributeError as e:
+        except AttributeError:
             # 忽略还未声明变量时的异常
-            print('走AttributeError', repr(e))
             pass
         try:
             # 关闭聊天子进程
@@ -607,11 +619,9 @@ class ClientWindow(QMainWindow):
             self.chat_sender.join()
             self.chat_sender.close()
             print(self.chat_sender.is_alive())
-        except ValueError as e:
-            print('走聊天ValueError', repr(e))
+        except ValueError:
             pass
-        except AttributeError as e:
-            print('走聊天AttributeError', repr(e))
+        except AttributeError:
             pass
     
     def keyPressEvent(self, k):
