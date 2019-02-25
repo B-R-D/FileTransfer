@@ -3,13 +3,10 @@
 聊天客户端
 '''
 import os, threading, random, hashlib, asyncio, json
-from multiprocessing import Queue
 
 class ClientProtocol:
     '''
-    客户端主控制类。
-    数据变量：文件生成器，文件路径；
-    控制变量：与主进程的消息队列，同时传输文件数控制，消息循环，传输端点，自动重发。
+    聊天客户端主控制类。
     '''
     def __init__(self, message, que, loop):
         self.message = message
@@ -47,7 +44,6 @@ class ClientProtocol:
     def chat_sender(self):
         '''数据报的发送行为'''
         cdata = json.dumps({'type':'chat','message':self.message}).encode()
-        print('Sending message to {0}: {1}...'.format(self.transport.get_extra_info('peername'), self.message), end='')
         self.transport.sendto(cdata)
     
 async def chat_main(host, port, message, que):
@@ -69,6 +65,6 @@ def chat_starter(host, port, message, que):
     '''
     传输线程启动函数。
     控制变量：同时运行的线程数
-    数据变量：文件路径列表
+    数据变量：消息
     '''
     asyncio.run(chat_main(host, port, message, que),)
