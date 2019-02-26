@@ -2,7 +2,7 @@
 '''
 聊天客户端
 '''
-import os, threading, random, hashlib, asyncio, json
+import random, asyncio, json
 
 class ClientProtocol:
     '''
@@ -19,7 +19,8 @@ class ClientProtocol:
     def connection_made(self, transport):
         '''连接建立并发送'''
         self.transport = transport
-        self.chat_sender()
+        cdata = json.dumps({'type':'chat','message':self.message}).encode()
+        self.chat_sender(cdata)
 
     def datagram_received(self, message, addr):
         '''
@@ -41,10 +42,11 @@ class ClientProtocol:
         '''连接断开时的行为'''
         self.que.put({'type':'chat', 'status':'failed'})
         
-    def chat_sender(self):
+    def chat_sender(self, cdata):
         '''数据报的发送行为'''
-        cdata = json.dumps({'type':'chat','message':self.message}).encode()
+        self.time_counter.cancel()
         self.transport.sendto(cdata)
+        self.time_counter = self.loop.call_later(0.2 + random.random(), self.chat_sender, cdata)
     
 async def chat_main(host, port, message, que):
     '''
