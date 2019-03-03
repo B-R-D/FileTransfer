@@ -1,7 +1,6 @@
 # coding:utf-8
 '''
 UDP客户端GUI版
-改进：发送文件时聊天无效。
 '''
 import os, sys, functools, queue
 from multiprocessing import Process, Queue
@@ -539,7 +538,8 @@ class ClientWindow(QMainWindow):
 
     def findIndexByName(self, name):
         '''按文件名在表格视图中查找索引，没有返回None'''
-        for i in range(self.file_table.rowCount()):
+        row = self.file_table.rowCount()
+        for i in range(row):
             if self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() == name:
                 return i
         return None
@@ -552,7 +552,7 @@ class ClientWindow(QMainWindow):
         self.settings.endGroup()
         fname = QFileDialog.getOpenFileNames(self, '请选择文件', setting_path_history)
         if fname[0]:
-            # 获取当前文件列表变量中的路径列表，排除相同文件
+            # 获取当前文件列表变量中的路径字典，排除相同文件
             path_list = [inst.getFilePath() for inst in self.files]
             for path in fname[0]:
                 if path not in path_list:

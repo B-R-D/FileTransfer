@@ -5,7 +5,6 @@ UDP客户端，尝试连接服务端。
 '''
 
 import os, threading, random, hashlib, asyncio, json
-from multiprocessing import Queue
 
 class FilePart:
     '''文件信息类'''
