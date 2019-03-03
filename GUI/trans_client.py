@@ -68,7 +68,7 @@ class ClientProtocol:
         self.thread_md5 = threading.Thread(target=self.md5_gener)
         self.thread_md5.start()
 
-    def datagram_received(self, message):
+    def datagram_received(self, message, addr):
         """
         接收数据报时的行为：
         依据传递的信息执行响应。

@@ -116,7 +116,7 @@ async def main(incoming_ip, bind_port, save_dir, que):
         await asyncio.sleep(99999999)
     except Exception as e:
         que.put({'type': 'server_info', 'message': 'error', 'detail': repr(e)})
-    finally:
+    else:
         transport.close()
 
 

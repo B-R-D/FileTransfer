@@ -276,7 +276,13 @@ class ClientWindow(QMainWindow):
         self.file_table.setColumnCount(5)
         self.file_table.setRowCount(len(self.files))
         self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
+        # 要用表头的ResizeMode函数而不能用列的ResizeMode函数
+        self.file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.file_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.file_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.file_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.file_table.horizontalHeader().setSectionsClickable(False)
         for inst in self.files:
             if inst.name not in file_name:
                 prog_widget = QWidget()
@@ -309,14 +315,10 @@ class ClientWindow(QMainWindow):
                 self.file_table.setItem(index, 2, file_prog)
                 self.file_table.setItem(index, 3, file_size)
                 self.file_table.setItem(index, 4, file_status)
-        self.file_table.resizeColumnToContents(0)
-        self.file_table.resizeColumnToContents(2)
-        self.file_table.resizeColumnToContents(3)
-        self.file_table.resizeColumnToContents(4)
         self.file_table.show()
-
         for inst in self.files:
             inst.label.setText(self.shorten_filename(inst.name, self.file_table.columnWidth(1)))
+
 
     def button_pressed(self):
         self.settings.beginGroup('ClientSetting')
@@ -577,7 +579,7 @@ class ClientWindow(QMainWindow):
         if fname[0]:
             # 用集合set求新增文件列表
             new_list = set(fname[0])
-            old_list = {inst.getFilePath() for inst in self.files}
+            old_list = {inst.path for inst in self.files}
             for path in new_list - old_list:
                 self.files.append(FileStatus(path))
             self.Lfile_empty.hide()
