@@ -1,111 +1,109 @@
 # coding:utf-8
-'''
+"""
 自定义的QT控件集
 聊天显示/输入框；
-
-'''
+"""
 import os
 
 from PyQt5.QtCore import Qt, QSettings
 from PyQt5.QtGui import QGuiApplication
-from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout, QTableWidget
-from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QLineEdit, QTextEdit, QMessageBox, QSpinBox, QCheckBox, QGroupBox, QSplitter, QDoubleSpinBox, QMenu
+from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout
+from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QLineEdit, QTextEdit, QMenu
+from PyQt5.QtWidgets import QMessageBox, QSpinBox, QCheckBox, QGroupBox, QSplitter, QDoubleSpinBox
+
 
 class WindowSplitter(QSplitter):
     def __init__(self, orientation, parent):
         super().__init__(orientation, parent)
-        self.initUI()
-    def initUI(self):
-        pass
+
     def resizeEvent(self, event):
         self.parent().resizeEvent(event)
+
 
 class MessageDisplayEdit(QTextEdit):
     def __init__(self, parent):
         super().__init__(parent)
         self.copy_flag = False
-        self.initUI()
-    def initUI(self):
-        pass
+
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-        select_allAct = menu.addAction('全选')
-        copyAct = menu.addAction('复制')
+        act_select_all = menu.addAction('全选')
+        act_copy = menu.addAction('复制')
         menu.addSeparator()
-        clearAct = menu.addAction('清空')
+        act_clear = menu.addAction('清空')
         # 将是否可以复制的状态记录到类变量中
-        self.copyAvailable.connect(self.copyController)
+        self.copyAvailable.connect(self.copy_controller)
         if not self.toPlainText():
-            select_allAct.setEnabled(False)
-            copyAct.setEnabled(False)
-            clearAct.setEnabled(False)
+            act_select_all.setEnabled(False)
+            act_copy.setEnabled(False)
+            act_clear.setEnabled(False)
         else:
-            copyAct.setEnabled(self.copy_flag)
+            act_copy.setEnabled(self.copy_flag)
         action = menu.exec(self.mapToGlobal(event.pos()))
         # 选择行为
-        if action == copyAct:
+        if action == act_copy:
             self.copy()
-        elif action == select_allAct:
+        elif action == act_select_all:
             self.selectAll()
-        elif action == clearAct:
+        elif action == act_clear:
             self.clear()
-    def copyController(self, yes):
-        '''复制状态记录函数'''
+
+    def copy_controller(self, yes):
+        """复制状态记录函数"""
         self.copy_flag = yes
+
 
 class MessageWriter(QLineEdit):
     def __init__(self, parent):
         super().__init__(parent)
-        self.initUI()
-    def initUI(self):
-        pass
+
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-        select_allAct = menu.addAction('全选')
-        cutAct = menu.addAction('剪切')
-        copyAct = menu.addAction('复制')
-        pasteAct = menu.addAction('粘贴')
+        act_select_all = menu.addAction('全选')
+        act_cut = menu.addAction('剪切')
+        act_copy = menu.addAction('复制')
+        act_paste = menu.addAction('粘贴')
         if not self.text():
-            select_allAct.setEnabled(False)
-            cutAct.setEnabled(False)
-            copyAct.setEnabled(False)
+            act_select_all.setEnabled(False)
+            act_cut.setEnabled(False)
+            act_copy.setEnabled(False)
         else:
-            cutAct.setEnabled(self.hasSelectedText())
-            copyAct.setEnabled(self.hasSelectedText())
+            act_cut.setEnabled(self.hasSelectedText())
+            act_copy.setEnabled(self.hasSelectedText())
         action = menu.exec(self.mapToGlobal(event.pos()))
         # 选择行为
-        if action == cutAct:
+        if action == act_cut:
             self.cut()
-        elif action == copyAct:
+        elif action == act_copy:
             self.copy()
-        elif action == select_allAct:
+        elif action == act_select_all:
             self.selectAll()
-        elif action == pasteAct:
+        elif action == act_paste:
             self.paste()
-        
+
+
 class ClientSettingDialog(QWidget):
-    '''
-    发送端设置对话框(模态)。
-    包含设置：
-    接收端网络IP和端口号设置；
-    同时传输的文件数设置；
-    是否删除源文件设置。
-    '''
+    """
+    发送端设置对话框(模态)
+    """
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
-        self.initUI()
+        self.init_ui()
 
-    def initUI(self):
+    def init_ui(self):
+        # 模态对话框且只有关闭按钮
         self.setWindowModality(Qt.ApplicationModal)
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        # 对话框位置及尺寸
         self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.reso_height = self.resolution.height()
         self.reso_width = self.resolution.width()
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
-        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, parent_geo.y() + (parent_geo.height() - self.width()) / 2)
+        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
+                  parent_geo.y() + (parent_geo.height() - self.width()) / 2)
         
         self.settings.beginGroup('ClientSetting')
         self.Lserver_ip = QLabel('接收端IP')
@@ -183,12 +181,12 @@ class ClientSettingDialog(QWidget):
         setting_bind_port = int(self.settings.value('bind_port', 54321))
         self.settings.endGroup()
         if self.Sserver_port.value() == setting_bind_port:
-            msgBox = QMessageBox(self)
-            msgBox.setWindowTitle('错误')
-            msgBox.setIcon(QMessageBox.Warning)
-            msgBox.setText('端口号冲突！\n请设置与接收端不同的端口号！')
-            msgBox.addButton('确定', QMessageBox.AcceptRole)
-            msgBox.exec()
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle('错误')
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setText('端口号冲突！\n请设置与接收端不同的端口号！')
+            msg_box.addButton('确定', QMessageBox.AcceptRole)
+            msg_box.exec()
         else:
             self.settings.beginGroup('ClientSetting')
             self.settings.setValue('host', self.Eserver_ip.text())
@@ -204,28 +202,29 @@ class ClientSettingDialog(QWidget):
         if k.key() == Qt.Key_Escape:
             self.close()
 
+
 class ServerSettingDialog(QWidget):
-    '''
-    服务端设置对话框(模态)。
-    包含设置：
-    服务端IP及端口绑定；
-    接收文件的保存位置。
-    '''
+    """
+    服务端设置对话框(模态)
+    """
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
-        self.initUI()
+        self.init_ui()
 
-    def initUI(self):
+    def init_ui(self):
+        # 模态对话框且只有关闭按钮
         self.setWindowModality(Qt.ApplicationModal)
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        # 对话框位置及尺寸
         self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.reso_height = self.resolution.height()
         self.reso_width = self.resolution.width()
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
-        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, parent_geo.y() + (parent_geo.height() - self.width()) / 2)
+        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, 
+                  parent_geo.y() + (parent_geo.height() - self.width()) / 2)
         
         self.settings.beginGroup('ServerSetting')
         self.Lincoming_ip = QLabel('呼入IP')
@@ -240,7 +239,7 @@ class ServerSettingDialog(QWidget):
         self.Sbind_port.setContextMenuPolicy(Qt.NoContextMenu)
         setting_bind_port = int(self.settings.value('bind_port', 54321))
         self.Sbind_port.setValue(setting_bind_port)
-
+        
         self.Gnet = QGroupBox('网络设置')
         net_form = QFormLayout()
         net_form.setSpacing(10)
@@ -254,7 +253,7 @@ class ServerSettingDialog(QWidget):
         self.Copen_server.setChecked(setting_open_server)
         self.Lreceive_dir = QLabel('文件保存目录')
         self.Breceive_dir = QPushButton('浏览')
-        self.Breceive_dir.clicked.connect(self.chooseDir)
+        self.Breceive_dir.clicked.connect(self.choose_dir)
         self.Ereceive_dir = QLineEdit(self)
         self.Ereceive_dir.setReadOnly(True)
         self.Ereceive_dir.setContextMenuPolicy(Qt.NoContextMenu)
@@ -294,12 +293,12 @@ class ServerSettingDialog(QWidget):
         setting_server_port = int(self.settings.value('server_port', 12345))
         self.settings.endGroup()
         if self.Sbind_port.value() == setting_server_port:
-            msgBox = QMessageBox(self)
-            msgBox.setWindowTitle('错误')
-            msgBox.setIcon(QMessageBox.Warning)
-            msgBox.setText('端口号冲突！\n请设置与发送端不同的端口号！')
-            msgBox.addButton('确定', QMessageBox.AcceptRole)
-            msgBox.exec()
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle('错误')
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setText('端口号冲突！\n请设置与发送端不同的端口号！')
+            msg_box.addButton('确定', QMessageBox.AcceptRole)
+            msg_box.exec()
         else:
             self.settings.beginGroup('ServerSetting')
             self.settings.setValue('incoming_ip', self.Eincoming_ip.text())
@@ -310,7 +309,7 @@ class ServerSettingDialog(QWidget):
             self.settings.endGroup()
             self.close()
     
-    def chooseDir(self):
+    def choose_dir(self):
         self.settings.beginGroup('ServerSetting')
         path = QFileDialog.getExistingDirectory(self, '选择目录', self.Ereceive_dir.text())
         if path:
@@ -321,18 +320,18 @@ class ServerSettingDialog(QWidget):
         if k.key() == Qt.Key_Escape:
             self.close()
 
+
 class UIDialog(QWidget):
-    '''
-    界面设置对话框(模态)。
-    包含是否启用详细视图设置。
-    '''
+    """
+    界面设置对话框(模态)
+    """
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
-        self.initUI()
+        self.init_ui()
 
-    def initUI(self):
+    def init_ui(self):
         self.setWindowModality(Qt.ApplicationModal)
         self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.reso_height = self.resolution.height()
@@ -356,7 +355,6 @@ class UIDialog(QWidget):
         self.Cchat_frame = QCheckBox(self)
         setting_chat_frame = int(self.settings.value('chat_frame', True))
         self.Cchat_frame.setChecked(setting_chat_frame)
-        
         self.settings.endGroup()
         
         self.Bconfirm = QPushButton('确定', self)

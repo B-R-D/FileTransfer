@@ -1,12 +1,18 @@
 # coding:utf-8
-'''
+"""
 UDP服务端，等待客户端的连接。
 有连接呼入时接收文件并保存。
-'''
-import os, threading, json, asyncio, hashlib, random
+"""
+import os
+import threading
+import json
+import asyncio
+import hashlib
+import random
+
 
 def display_file_length(file_size):
-    '''格式化文件长度'''
+    """格式化文件长度"""
     if file_size < 1024:
         return '{0:.1f}B'.format(file_size)
     elif 1024 <= file_size < 1048576:
@@ -16,11 +22,13 @@ def display_file_length(file_size):
     else:
         return '{0:.1f}GB'.format(file_size/1073741824)
 
+
 class ServerProtocol:
-    def __init__(self, dir, que, loop):
-        self.dir = dir
+    def __init__(self, save_dir, que, loop):
+        self.save_dir = save_dir
         self.que = que
         self.loop = loop
+        self.transport = None
         # 计数器字典：{name1: {part1: counter, ...}, ...}
         self.time_counter = {}
     
@@ -34,8 +42,8 @@ class ServerProtocol:
                 # 新建计时器记录
                 if info['name'] not in self.time_counter:
                     self.time_counter[info['name']] = {}
-                    self.que.put({'type':'server_info', 'message':'started', 'name':info['name']})
-                    self.message_sender({'type':'message','data':'get','name':info['name'],'part':0}, addr)
+                    self.que.put({'type': 'server_info', 'message': 'started', 'name': info['name']})
+                    self.message_sender({'type': 'message', 'data': 'get', 'name': info['name'], 'part': 0}, addr)
             elif info['data'] == 'terminated':
                 print('\nConnection terminated successfully.\n')
         elif info['type'] == 'data':
@@ -48,62 +56,69 @@ class ServerProtocol:
                 if len(self.time_counter[info['name']]) - 1 == info['all']:
                     wd.join()
                     self.time_counter.pop(info['name'])
-                    checker = threading.Thread(target=self.MD5_checker, args=(info, addr))
+                    checker = threading.Thread(target=self.md5_checker, args=(info, addr))
                     checker.start()
-                    self.transport.sendto(json.dumps({'type':'message','data':'complete','name':info['name']}).encode(), addr)
-                    print('\nFile: {0}({1}) transmission complete.\n'.format(info['name'], display_file_length(info['size'])))
+                    msg = json.dumps({'type': 'message', 'data': 'complete', 'name': info['name']}).encode()
+                    self.transport.sendto(msg, addr)
+                    print('\nFile: {0}({1}) transmission complete.\n'
+                          .format(info['name'], display_file_length(info['size'])))
         elif info['type'] == 'chat':
-            self.que.put({'type':'chat', 'status':'received', 'message':info['message'], 'from':addr})
-            self.transport.sendto(json.dumps({'type':'chat','message':info['message'],'data':'get'}).encode(), addr)
+            self.que.put({'type': 'chat', 'status': 'received', 'message': info['message'], 'from': addr})
+            msg = json.dumps({'type': 'chat', 'message': info['message'], 'data': 'get'}).encode()
+            self.transport.sendto(msg, addr)
     
-    def connection_lost(self, exc):
+    def connection_lost(self):
         print('Server terminated.')
     
     def write_data(self, info, data, addr):
-        '''写入本地数据并回发get消息'''
-        with open(os.path.join(self.dir, info['name']), 'ab') as filedata:
+        """写入本地数据并调用get消息回发函数"""
+        with open(os.path.join(self.save_dir, info['name']), 'ab') as filedata:
             filedata.write(data)
         print('{0}(part {1}/{2}) complete.'.format(info['name'], info['part'] + 1, info['all']), end='\n')
         # 非末块则有回送操作(这里是用插入新值封住了接收重复块)
         if not len(self.time_counter[info['name']]) - 1 == info['all']:
-            message = {'type':'message','data':'get','name':info['name'],'part':info['part'] + 1}
+            message = {'type': 'message', 'data': 'get', 'name': info['name'], 'part': info['part'] + 1}
             self.message_sender(message, addr)
 
     def message_sender(self, message, addr):
-        '''自带随机秒重发机制的消息回发'''
+        """自带随机秒重发机制的消息回发"""
         self.transport.sendto(json.dumps(message).encode(), addr)
-        self.time_counter[message['name']][message['part']] = self.loop.call_later(random.random() + 0.5, self.message_sender, message, addr)
+        self.time_counter[message['name']][message['part']] = \
+            self.loop.call_later(random.random() + 0.5, self.message_sender, message, addr)
 
-    def MD5_checker(self, info, addr):
-        '''MD5检查函数，不带重发机制'''
-        with open(os.path.join(self.dir, info['name']), 'rb') as filedata:
+    def md5_checker(self, info, addr):
+        """MD5检查函数，不带重发机制"""
+        with open(os.path.join(self.save_dir, info['name']), 'rb') as filedata:
             md5 = hashlib.md5()
             for line in filedata:
                 md5.update(line)
         if md5.hexdigest() == info['md5']:
-            self.transport.sendto(json.dumps({'type':'message','name':info['name'],'data':'MD5_passed'}).encode(), addr)
-            self.que.put({'type':'server_info', 'message':'MD5_passed', 'name':info['name']})
+            msg = json.dumps({'type': 'message', 'name': info['name'], 'data': 'MD5_passed'}).encode()
+            self.transport.sendto(msg, addr)
+            self.que.put({'type': 'server_info', 'message': 'MD5_passed', 'name': info['name']})
             print('\n', info['name'], 'MD5 checking passed.\n')
         else:
-            self.transport.sendto(json.dumps({'type':'message','name':info['name'],'data':'MD5_failed'}).encode(), addr)
-            self.que.put({'type':'server_info','message':'MD5_failed', 'name':info['name']})
+            msg = json.dumps({'type': 'message', 'name': info['name'], 'data': 'MD5_failed'}).encode()
+            self.transport.sendto(msg, addr)
+            self.que.put({'type': 'server_info', 'message': 'MD5_failed', 'name': info['name']})
             print('\n', info['name'], 'MD5 checking failed.\n')
-        
-async def main(incoming_ip, bind_port, dir, que):
-    '''服务端主函数'''
+
+
+async def main(incoming_ip, bind_port, save_dir, que):
+    """服务端主函数"""
     loop = asyncio.get_running_loop()
     try:
         transport, protocol = await loop.create_datagram_endpoint(
-            lambda: ServerProtocol(dir, que, loop),
+            lambda: ServerProtocol(save_dir, que, loop),
             local_addr=(incoming_ip, bind_port))
-        que.put({'type':'server_info', 'message':'ready'})
-    except Exception as e:
-        que.put({'type':'server_info', 'message':'error', 'detail': repr(e)})
-    print('Waiting for incoming transmission...')
-    try:
+        que.put({'type': 'server_info', 'message': 'ready'})
+        print('Waiting for incoming transmission...')
         await asyncio.sleep(99999999)
+    except Exception as e:
+        que.put({'type': 'server_info', 'message': 'error', 'detail': repr(e)})
     finally:
         transport.close()
-        
-def starter(incoming_ip, bind_port, dir, que):
-    asyncio.run(main(incoming_ip, bind_port, dir, que))
+
+
+def starter(incoming_ip, bind_port, save_dir, que):
+    asyncio.run(main(incoming_ip, bind_port, save_dir, que))

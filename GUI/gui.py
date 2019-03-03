@@ -1,80 +1,79 @@
 # coding:utf-8
-'''
-UDP客户端GUI版
-'''
-import os, sys, functools, queue
+"""UDP客户端GUI版"""
+import os
+import sys
+import queue
+import functools
 from multiprocessing import Process, Queue
-import trans_client, server, chat_client, def_widget
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
-from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication, QTextCursor, QColor
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QMainWindow, QApplication, QStackedLayout, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView
+from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication, QTextCursor
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QStackedLayout, QMainWindow, QApplication
+from PyQt5.QtWidgets import QWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QTableWidget
 from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QAction, QMessageBox, QProgressBar, QFrame
 
+import server
+import trans_client
+import chat_client
+import def_widget
+
+
 class FileStatus:
-    '''
+    """
     定义所需的基本文件信息类。
-    可获取信息：文件路径，文件名，文件大小，当前状态；
-    可获取绑定对象：状态按钮，进度条，显示文件名标签；
-    包含方法：七个获取对象/信息方法，一个设置当前状态的方法。
-    '''
+    可获取类属性：文件路径，文件名，状态按钮，进度条，文件名标签；
+    包含属性装饰器：文件大小（只读），文件状态（读写）。
+    """
     def __init__(self, path):
-        self._path = path
-        self._name = os.path.split(self._path)[1]
-        self._size = os.path.getsize(self._path)
+        self.path = path
+        self.name = os.path.split(self.path)[1]
+        self._size = os.path.getsize(self.path)
         self._all = self._size // 65000 + 1
         self._status = 'pending'
-        
-        # 按钮样式：状态图片+状态说明文字+无按钮边框
-        self._button = QPushButton(QIcon(os.path.join('icon', 'pending.png')), '')
-        self._button.setToolTip('等待传输')
-        self._button.setFlat(True)
-        # 进度条样式：不显示百分比
-        self._prog = QProgressBar()
-        self._prog.setTextVisible(False)
-        self._prog.setRange(0, self._all)
-        # 文件名标签样式：tooltip为文件全名
-        self._label = QLabel(self._name)
-        self._label.setToolTip(self._name)
-    
-    def getFilePath(self):
-        return self._path
-    def getFileName(self):
-        return self._name
-    def getFileSize(self):
+
+        self.button = QPushButton(QIcon(os.path.join('icon', 'pending.png')), '')
+        self.button.setToolTip('等待传输')
+        self.button.setFlat(True)
+
+        self.prog = QProgressBar()
+        self.prog.setTextVisible(False)
+        self.prog.setRange(0, self._all)
+
+        self.label = QLabel(self.name)
+        self.label.setToolTip(self.name)
+
+    @property
+    def size(self):
         return trans_client.display_file_length(self._size)
-    def getFileStatus(self):
+
+    @property
+    def status(self):
         return self._status
-    def getFileButton(self):
-        return self._button
-    def getFileProg(self):
-        return self._prog
-    def getFileLabel(self):
-        return self._label
-    
-    def setFileStatus(self, new_status):
-        '''根据新设置的状态切换按钮图片及tooltip'''
+
+    @status.setter
+    def status(self, new_status):
+        """根据新设置的状态切换按钮图片及tooltip"""
         self._status = new_status
         if self._status == 'pending':
-            self._button.setIcon(QIcon(os.path.join('icon', 'pending.png')))
-            self._button.setToolTip('等待传输')
+            self.button.setIcon(QIcon(os.path.join('icon', 'pending.png')))
+            self.button.setToolTip('等待传输')
         elif self._status == 'error':
-            self._button.setIcon(QIcon(os.path.join('icon', 'error.png')))
-            self._button.setToolTip('传输错误')
+            self.button.setIcon(QIcon(os.path.join('icon', 'error.png')))
+            self.button.setToolTip('传输错误')
         elif self._status == 'complete':
-            self._button.setIcon(QIcon(os.path.join('icon', 'complete.png')))
-            self._button.setToolTip('传输完成')
+            self.button.setIcon(QIcon(os.path.join('icon', 'complete.png')))
+            self.button.setToolTip('传输完成')
         elif self._status == 'uploading':
-            self._button.setIcon(QIcon(os.path.join('icon', 'uploading.png')))
-            self._button.setToolTip('传输中')
+            self.button.setIcon(QIcon(os.path.join('icon', 'uploading.png')))
+            self.button.setToolTip('传输中')
+
 
 class ClientWindow(QMainWindow):
-    '''
+    """
     GUI主窗口类。
-    包含控件：菜单栏，文件列表区域，文件选择对话框
-    包含成员方法：简明/详细视图，
-    '''
+    """
     def __init__(self):
+        super().__init__()
         # 初始化发送/接收文件列表：存放待发送文件的绝对路径
         self.files = []
         self.received_files = []
@@ -83,14 +82,14 @@ class ClientWindow(QMainWindow):
         # 初始化进程间通信队列：发送端和接收端
         self.client_que = Queue()
         self.server_que = Queue()
-        super().__init__()
-        # 初始化设置ini文件
+        # 初始化设置文件
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
-        self.initUI()
-        
-    def initUI(self):
+        # 初始化字体
         self.setFont(QFont('Arial', 10))
-        # 收集屏幕分辨率信息
+        self.init_ui()
+
+    def init_ui(self):
+        # 屏幕分辨率信息
         self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.height = self.resolution.height()
         self.width = self.resolution.width()
@@ -101,68 +100,68 @@ class ClientWindow(QMainWindow):
         self.resize(setting_window_size[0], setting_window_size[1])
         # 在屏幕中央(不含开始菜单栏)打开窗口
         self.frameGeometry().moveCenter(self.resolution.center())
-        
+
         # 定义文件传输区域及消息传输区域
         self.sender_frame = QFrame()
         self.chat_frame = QFrame()
-        self.spliter = def_widget.WindowSplitter(Qt.Horizontal, self)
-        self.spliter.setHandleWidth(self.width / 384)
-        self.spliter.splitterMoved.connect(self.resizeEvent)
-        self.spliter.addWidget(self.sender_frame)
-        self.spliter.addWidget(self.chat_frame)
-        self.spliter.handle(1).setStyleSheet('QSplitterHandle{background-color: rgb(210,210,210)}')
-        
+        self.splitter = def_widget.WindowSplitter(Qt.Horizontal, self)
+        self.splitter.setHandleWidth(self.width / 384)
+        self.splitter.splitterMoved.connect(self.resizeEvent)
+        self.splitter.addWidget(self.sender_frame)
+        self.splitter.addWidget(self.chat_frame)
+        self.splitter.handle(1).setStyleSheet('QSplitterHandle{background-color: rgb(210,210,210)}')
+
         # 定义窗口主控件
         self.widget = QWidget()
-        self.setCentralWidget(self.spliter)
-        
+        self.setCentralWidget(self.splitter)
+
         # 定义菜单栏：文件，设置
-        menubar = self.menuBar()
-        fileMenu = menubar.addMenu('文件(&F)')
-        chooseAct = QAction('选择文件(&C)', self)
-        sendAct = QAction('发送(&S)', self)
-        exitAct = QAction('退出(&Q)', self)
-        
-        fileMenu.addAction(chooseAct)
-        fileMenu.addAction(sendAct)
-        fileMenu.addSeparator()
-        fileMenu.addAction(exitAct)
-        chooseAct.triggered.connect(self.fileDialog)
-        sendAct.triggered.connect(self.fileChecker)
-        exitAct.triggered.connect(self.safeClose)
-        
-        settingMenu = menubar.addMenu('设置(&S)')
-        clientAct = QAction('发送端设置(&C)', self)
-        serverAct = QAction('接收端设置(&S)', self)
-        uiAct = QAction('界面设置(&U)', self)
-        
-        settingMenu.addAction(clientAct)
-        settingMenu.addAction(serverAct)
-        settingMenu.addAction(uiAct)
-        clientAct.triggered.connect(self.clientSettingDialog)
-        serverAct.triggered.connect(self.serverSettingDialog)
-        uiAct.triggered.connect(self.uiSettingDialog)
-        
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu('文件(&F)')
+        act_choose = QAction('选择文件(&C)', self)
+        act_send = QAction('发送(&S)', self)
+        act_exit = QAction('退出(&Q)', self)
+
+        file_menu.addAction(act_choose)
+        file_menu.addAction(act_send)
+        file_menu.addSeparator()
+        file_menu.addAction(act_exit)
+        act_choose.triggered.connect(self.file_dialog)
+        act_send.triggered.connect(self.file_checker)
+        act_exit.triggered.connect(self.safe_close)
+
+        setting_menu = menu_bar.addMenu('设置(&S)')
+        act_client = QAction('发送端设置(&C)', self)
+        act_server = QAction('接收端设置(&S)', self)
+        act_ui = QAction('界面设置(&U)', self)
+
+        setting_menu.addAction(act_client)
+        setting_menu.addAction(act_server)
+        setting_menu.addAction(act_ui)
+        act_client.triggered.connect(self.client_setting_dialog)
+        act_server.triggered.connect(self.server_setting_dialog)
+        act_ui.triggered.connect(self.ui_setting_dialog)
+
         # 创建状态栏
-        self.statusbar = self.statusBar()
-        self.statusbar.setSizeGripEnabled(False)
+        self.status_bar = self.statusBar()
+        self.status_bar.setSizeGripEnabled(False)
         self.Lclient_status = QLabel('发送端已就绪')
         self.Lserver_status = QLabel('接收端未启动')
-        self.statusbar.addWidget(self.Lclient_status, 1)
-        self.statusbar.addWidget(self.Lserver_status, 1)
+        self.status_bar.addWidget(self.Lclient_status, 1)
+        self.status_bar.addWidget(self.Lserver_status, 1)
 
         # 定义传输控件：选择按钮(默认按钮)，空区域(左上对齐)，文件列表(单元格不可选择)，发送按钮
         self.Bselector = QPushButton('选择文件', self)
         self.Bselector.setDefault(True)
-        self.Bselector.clicked.connect(self.fileDialog)
+        self.Bselector.clicked.connect(self.file_dialog)
         self.Lfile_empty = QLabel('未选中文件')
         self.Lfile_empty.setAlignment(Qt.AlignTop)
         self.file_table = QTableWidget()
         self.file_table.setSelectionMode(QAbstractItemView.NoSelection)
         self.file_table.hide()
         self.Bfile_sender = QPushButton('发送', self)
-        self.Bfile_sender.clicked.connect(self.fileChecker)
-        
+        self.Bfile_sender.clicked.connect(self.file_checker)
+
         # 定义传输区域垂直布局
         self.vbox = QVBoxLayout()
         self.vbox.setSpacing(self.height / 70)
@@ -171,19 +170,19 @@ class ClientWindow(QMainWindow):
         self.vbox.addWidget(self.Lfile_empty)
         self.vbox.addWidget(self.Bfile_sender)
         self.sender_frame.setLayout(self.vbox)
-        
+
         # 定义消息控件：消息显示区域，发送文本框，发送/收起按钮
         self.Emessage_area = def_widget.MessageDisplayEdit(self)
         self.Emessage_area.setContextMenuPolicy(Qt.DefaultContextMenu)
         self.Emessage_area.setReadOnly(True)
         self.Emessage_writer = def_widget.MessageWriter(self)
         self.Emessage_writer.setPlaceholderText('输入消息')
-        self.Emessage_writer.returnPressed.connect(self.chatChecker)
+        self.Emessage_writer.returnPressed.connect(self.chat_checker)
         self.Bfolder = QPushButton('<< 收起', self)
-        self.Bfolder.clicked.connect(functools.partial(self.spliter.setSizes, [self.geometry().width(), 0]))
+        self.Bfolder.clicked.connect(functools.partial(self.splitter.setSizes, [self.geometry().width(), 0]))
         self.Bmessage_sender = QPushButton('发送', self)
-        self.Bmessage_sender.clicked.connect(self.chatChecker)
-        
+        self.Bmessage_sender.clicked.connect(self.chat_checker)
+
         # 定义消息区域垂直布局
         self.chat_vbox = QVBoxLayout()
         self.chat_vbox.setSpacing(self.height / 70)
@@ -195,7 +194,7 @@ class ClientWindow(QMainWindow):
         self.chat_hbox.addWidget(self.Bmessage_sender)
         self.chat_vbox.addLayout(self.chat_hbox)
         self.chat_frame.setLayout(self.chat_vbox)
-        
+
         # 从设置中读取视图设定并设定窗口最小值
         self.settings.beginGroup('UISetting')
         self.setting_detail_view = int(self.settings.value('detail_view', False))
@@ -204,14 +203,14 @@ class ClientWindow(QMainWindow):
             self.sender_frame.setMinimumWidth(self.width / 7.68)
         else:
             self.sender_frame.setMinimumWidth(self.width / 6)
-        self.uiSettingChecker()
+        self.ui_setting_checker()
         self.settings.beginGroup('Misc')
         self.setting_frame_width = self.settings.value('frame_width', (self.geometry().width(), 0))
         self.settings.endGroup()
-        self.spliter.setSizes([self.setting_frame_width[0], self.setting_frame_width[1]])
+        self.splitter.setSizes([self.setting_frame_width[0], self.setting_frame_width[1]])
         self.setWindowTitle('FileTransfer')
         self.show()
-        
+
         # 按设置启动服务端
         self.settings.beginGroup('ServerSetting')
         setting_open_server = int(self.settings.value('open_server', True))
@@ -223,19 +222,20 @@ class ClientWindow(QMainWindow):
             setting_bind_port = int(self.settings.value('bind_port', 54321))
             setting_receive_dir = self.settings.value('receive_dir', os.path.abspath('.'))
             self.settings.endGroup()
-            self.server_starter = Process(target=server.starter, args=(setting_incoming_ip, setting_bind_port, setting_receive_dir, self.server_que))
+            self.server_starter = Process(target=server.starter, args=(
+                setting_incoming_ip, setting_bind_port, setting_receive_dir, self.server_que))
             self.server_starter.start()
             # 循环读取服务端信息
             self.server_timer = QTimer()
-            self.server_timer.timeout.connect(self.serverStatus)
+            self.server_timer.timeout.connect(self.server_status)
             self.server_timer.start(100)
-    
-    def simple_viewer(self):
-        '''简明视图构建：包含按钮及进度条'''
 
+    def simple_viewer(self):
+        """简明视图：按钮及进度条"""
         # 通过文件名的tooltip生成视图中现有的文件名列表
         if self.file_table.rowCount():
-            file_name = [self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() for i in range(self.file_table.rowCount())]
+            file_name = [self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() for i in
+                         range(self.file_table.rowCount())]
         else:
             file_name = []
 
@@ -249,27 +249,28 @@ class ClientWindow(QMainWindow):
 
         # 针对新选择的文件在列表中增加新增文件的行
         for inst in self.files:
-            if inst.getFileName() not in file_name:
+            if inst.name not in file_name:
                 prog_widget = QWidget()
                 prog_stack = QStackedLayout()
-                prog_stack.addWidget(inst.getFileProg())
-                prog_stack.addWidget(inst.getFileLabel())
+                prog_stack.addWidget(inst.prog)
+                prog_stack.addWidget(inst.label)
                 prog_stack.setStackingMode(QStackedLayout.StackAll)
                 prog_widget.setLayout(prog_stack)
 
-                inst.getFileLabel().setText(inst.getFileName())
-                inst.getFileButton().clicked.connect(functools.partial(self.del_file, inst))
-                self.file_table.setCellWidget(self.files.index(inst), 0, inst.getFileButton())
+                inst.label.setText(inst.name)
+                inst.button.clicked.connect(functools.partial(self.del_file, inst))
+                self.file_table.setCellWidget(self.files.index(inst), 0, inst.button)
                 self.file_table.setCellWidget(self.files.index(inst), 1, prog_widget)
         self.file_table.show()
         # 表格显示后截断文件名
         for inst in self.files:
-            inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1)))
+            inst.label.setText(self.shorten_filename(inst.name, self.file_table.columnWidth(1)))
 
     def detail_viewer(self):
-        '''详细视图构建：包括按钮、进度条、详细分片进度、文件大小、状态'''
+        """详细视图：包括按钮、进度条、详细分片进度、文件大小、状态"""
         if self.file_table.rowCount():
-            file_name = [self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() for i in range(self.file_table.rowCount())]
+            file_name = [self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() for i in
+                         range(self.file_table.rowCount())]
         else:
             file_name = []
         self.file_table.setColumnCount(5)
@@ -277,33 +278,33 @@ class ClientWindow(QMainWindow):
         self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
         self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         for inst in self.files:
-            if inst.getFileName() not in file_name:
+            if inst.name not in file_name:
                 prog_widget = QWidget()
                 prog_stack = QStackedLayout()
-                prog_stack.addWidget(inst.getFileProg())
-                prog_stack.addWidget(inst.getFileLabel())
+                prog_stack.addWidget(inst.prog)
+                prog_stack.addWidget(inst.label)
                 prog_stack.setStackingMode(QStackedLayout.StackAll)
                 prog_widget.setLayout(prog_stack)
-                inst.getFileLabel().setText(inst.getFileName())
+                inst.label.setText(inst.name)
                 # 定义按钮点击删除，长按全清的行为
-                inst.getFileButton().clicked.connect(functools.partial(self.del_file, inst))
-                inst.getFileButton().pressed.connect(self.button_pressed)
-                inst.getFileButton().released.connect(self.button_released)
+                inst.button.clicked.connect(functools.partial(self.del_file, inst))
+                inst.button.pressed.connect(self.button_pressed)
+                inst.button.released.connect(self.button_released)
 
                 # 设置各单元格样式：不可选中且VH居中
                 file_prog = QTableWidgetItem('0.00 %')
                 file_prog.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 file_prog.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-                file_size = QTableWidgetItem(inst.getFileSize())
+                file_size = QTableWidgetItem(inst.size)
                 file_size.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
                 file_size.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-                file_status = QTableWidgetItem(inst.getFileButton().toolTip())
+                file_status = QTableWidgetItem(inst.button.toolTip())
                 file_status.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
                 file_status.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
 
                 # 用文件列表变量中的索引排列文件
                 index = self.files.index(inst)
-                self.file_table.setCellWidget(index, 0, inst.getFileButton())
+                self.file_table.setCellWidget(index, 0, inst.button)
                 self.file_table.setCellWidget(index, 1, prog_widget)
                 self.file_table.setItem(index, 2, file_prog)
                 self.file_table.setItem(index, 3, file_size)
@@ -313,10 +314,10 @@ class ClientWindow(QMainWindow):
         self.file_table.resizeColumnToContents(3)
         self.file_table.resizeColumnToContents(4)
         self.file_table.show()
-        
+
         for inst in self.files:
-            inst.getFileLabel().setText(self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1)))
-    
+            inst.label.setText(self.shorten_filename(inst.name, self.file_table.columnWidth(1)))
+
     def button_pressed(self):
         self.settings.beginGroup('ClientSetting')
         setting_del_timeout = float(self.settings.value('del_timeout', 1))
@@ -325,17 +326,17 @@ class ClientWindow(QMainWindow):
         self.button_timer.timeout.connect(self.remove_all)
         self.button_timer.setSingleShot(True)
         self.button_timer.start(setting_del_timeout * 1000)
-    
+
     def button_released(self):
         self.button_timer.stop()
-        
+
     def remove_all(self):
         # 批量删除时需要从末尾开始逐个删除
         for i in range(len(self.files), 0, -1):
             self.del_file(self.files[i - 1])
-    
+
     def shorten_filename(self, name, width):
-        '''根据给定的宽度截断文件名并添加...，返回截断后的文件名'''
+        """根据给定的宽度截断文件名并添加...，返回截断后的文件名"""
         # 从第n个字符开始计算长度并添加...
         metrics = QFontMetrics(self.font())
         if metrics.width(name) > width - self.width / 128:
@@ -343,17 +344,17 @@ class ClientWindow(QMainWindow):
                 if metrics.width(name[:i]) > width - self.width / 128:
                     return name[:i] + '...'
         return name
-    
+
     def del_file(self, inst):
-        '''按钮上绑定的删除事件：从当前表格中找到行索引并删除以及删除文件列表中的实例。'''
-        index = self.findIndexByName(inst.getFileName())
+        """按钮上绑定的删除事件：从当前表格中找到行索引并删除以及删除文件列表中的实例。"""
+        index = self.find_index_by_name(inst.name)
         self.file_table.removeRow(index)
         self.files.remove(inst)
         if not self.files:
             self.file_table.hide()
             self.Lfile_empty.show()
 
-    def chatChecker(self):
+    def chat_checker(self):
         if self.Emessage_writer.text():
             self.settings.beginGroup('ClientSetting')
             setting_host = self.settings.value('host', '127.0.0.1')
@@ -370,19 +371,20 @@ class ClientWindow(QMainWindow):
                 pass
             self.Emessage_area.append('本机(localhost)：\n    {0} '.format(self.Emessage_writer.text()))
             # 由于客户端的消息队列只在发送时读取，必须传入服务器的消息队列
-            self.chat_sender = Process(target=chat_client.chat_starter, args=(setting_host, setting_port, self.Emessage_writer.text(), self.server_que))
+            self.chat_sender = Process(target=chat_client.chat_starter,
+                                       args=(setting_host, setting_port, self.Emessage_writer.text(), self.server_que))
             self.chat_sender.start()
             self.Emessage_writer.clear()
-            
-    def fileChecker(self):
-        '''文件列表检查及客户端传输进程开启'''
+
+    def file_checker(self):
+        """文件列表检查及客户端传输进程开启"""
         if not self.files:
-            msgBox = QMessageBox(self)
-            msgBox.setWindowTitle('错误')
-            msgBox.setIcon(QMessageBox.Warning)
-            msgBox.setText('未选择文件！')
-            msgBox.addButton('确定', QMessageBox.AcceptRole)
-            msgBox.exec()
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle('错误')
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setText('未选择文件！')
+            msg_box.addButton('确定', QMessageBox.AcceptRole)
+            msg_box.exec()
         else:
             # 从传输设置中调用同时传输的文件数及网络设定
             self.settings.beginGroup('ClientSetting')
@@ -392,25 +394,29 @@ class ClientWindow(QMainWindow):
             self.settings.endGroup()
             # 更改表格中文件行的状态
             for inst in self.files:
-                inst.setFileStatus('uploading')
-                inst.getFileProg().setValue(0)
-                index = self.findIndexByName(inst.getFileName())
+                inst.status = 'uploading'
+                inst.prog.setValue(0)
+                index = self.find_index_by_name(inst.name)
                 self.file_table.item(index, 4).setText('传输中')
             # 构建绝对路径列表并启动传输子进程，无法启动的异常反映在状态栏
-            path_list = [inst.getFilePath() for inst in self.files]
+            path_list = [inst.path for inst in self.files]
             try:
-                self.file_sender = Process(target=trans_client.file_thread, args=(setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
+                self.file_sender = Process(target=trans_client.file_thread, args=(
+                    setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
                 self.file_sender.start()
-                self.Lclient_status.setText('传输中：<font color=green>0<font color=black>/<font color=red>0<font color=black>/{0} (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'.format(len(self.findInstanceByStatus('uploading'))))
+                self.Lclient_status.setText(
+                    '''传输中：<font color=green>0<font color=black>/<font color=red>0<font color=black>/{0} 
+                    (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'''.format(
+                        len(self.find_instance_by_status('uploading'))))
             except Exception as e:
                 self.Lclient_status.setText(repr(e))
             # 启动进度条更新
             self.timer = QTimer()
-            self.timer.timeout.connect(self.updateProg)
+            self.timer.timeout.connect(self.update_prog)
             self.timer.start(5)
-            
-    def updateProg(self):
-        '''传输过程管理及进度条更新'''
+
+    def update_prog(self):
+        """传输过程管理及进度条更新"""
         try:
             # 无阻塞读取信息队列
             message = self.client_que.get(block=False)
@@ -421,54 +427,61 @@ class ClientWindow(QMainWindow):
                 self.settings.endGroup()
                 # 信息队列：依据MD5检查结果设置文件状态
                 if message['message'] == 'MD5_passed':
-                    self.findInstanceByName(message['name']).setFileStatus('complete')
-                    self.file_table.item(self.findIndexByName(message['name']), 4).setText('传输完成')
+                    self.find_instance_by_name(message['name']).status = 'complete'
+                    self.file_table.item(self.find_index_by_name(message['name']), 4).setText('传输完成')
                     if setting_del_source:
-                        os.remove(self.findInstanceByName(message['name']).getFilePath())
+                        os.remove(self.find_instance_by_name(message['name']).path)
                 elif message['message'] == 'MD5_failed':
-                    self.findInstanceByName(message['name']).setFileStatus('error')
-                    self.file_table.item(self.findIndexByName(message['name']), 4).setText('传输错误')
-                self.file_table.item(self.findIndexByName(message['name']), 2).setText('100 %')
+                    self.find_instance_by_name(message['name']).status = 'error'
+                    self.file_table.item(self.find_index_by_name(message['name']), 4).setText('传输错误')
+                self.file_table.item(self.find_index_by_name(message['name']), 2).setText('100 %')
 
                 # 若无上传中的文件，关闭传输进程且提示完成结果
-                if not self.findInstanceByStatus('uploading'):
-                    self.Lclient_status.setText('传输完成：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/0 (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'.format(len(self.findInstanceByStatus('complete')), len(self.findInstanceByStatus('error'))))
+                if not self.find_instance_by_status('uploading'):
+                    self.Lclient_status.setText(
+                        '''传输完成：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/0 
+                        (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'''.format(
+                            len(self.find_instance_by_status('complete')), len(self.find_instance_by_status('error'))))
                     self.file_sender.terminate()
                     self.file_sender.join()
                     self.file_sender.close()
                     self.timer.stop()
-                    if not self.findInstanceByStatus('error'):
-                        msgBox = QMessageBox(self)
-                        msgBox.setWindowTitle('成功')
-                        msgBox.setIcon(QMessageBox.Information)
-                        msgBox.setText('传输成功完成！')
-                        msgBox.addButton('确定', QMessageBox.AcceptRole)
-                        msgBox.exec()
+                    if not self.find_instance_by_status('error'):
+                        msg_box = QMessageBox(self)
+                        msg_box.setWindowTitle('成功')
+                        msg_box.setIcon(QMessageBox.Information)
+                        msg_box.setText('传输成功完成！')
+                        msg_box.addButton('确定', QMessageBox.AcceptRole)
+                        msg_box.exec()
                     else:
-                        msgBox = QMessageBox(self)
-                        msgBox.setWindowTitle('信息')
-                        msgBox.setIcon(QMessageBox.Warning)
-                        msgBox.setText('传输完成，但有文件传输出错！')
-                        msgBox.addButton('确定', QMessageBox.AcceptRole)
-                        msgBox.exec()
+                        msg_box = QMessageBox(self)
+                        msg_box.setWindowTitle('信息')
+                        msg_box.setIcon(QMessageBox.Warning)
+                        msg_box.setText('传输完成，但有文件传输出错！')
+                        msg_box.addButton('确定', QMessageBox.AcceptRole)
+                        msg_box.exec()
                 else:
-                    self.Lclient_status.setText('传输中：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/{2} (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'.format(len(self.findInstanceByStatus('complete')), len(self.findInstanceByStatus('error')), len(self.findInstanceByStatus('uploading'))))
+                    self.Lclient_status.setText(
+                        '''传输中：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/{2} 
+                        (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'''.format(
+                            len(self.find_instance_by_status('complete')), len(self.find_instance_by_status('error')),
+                            len(self.find_instance_by_status('uploading'))))
             elif message['type'] == 'prog':
                 # 信息队列：更新进度条进度
                 for inst in self.files:
-                    if inst.getFileName() == message['name']:
-                        inst.getFileProg().setValue(message['part'] + 1)
+                    if inst.name == message['name']:
+                        inst.prog.setValue(message['part'] + 1)
                         # 详细视图时还要更新进度百分比
                         if self.setting_detail_view:
-                            file_prog = message['part'] / inst.getFileProg().maximum() * 100
-                            index = self.findIndexByName(inst.getFileName())
+                            file_prog = message['part'] / inst.prog.maximum() * 100
+                            index = self.find_index_by_name(inst.name)
                             self.file_table.item(index, 2).setText('{0:.2f} %'.format(file_prog))
         except queue.Empty:
             # 忽略空队列异常
             pass
-    
-    def serverStatus(self):
-        '''启动时循环读取服务端状态及更新聊天信息'''
+
+    def server_status(self):
+        """启动时循环读取服务端状态及更新聊天信息"""
         try:
             message = self.server_que.get(block=False)
             if message['type'] == 'server_info':
@@ -478,13 +491,22 @@ class ClientWindow(QMainWindow):
                     self.Lserver_status.setText('服务端已就绪')
                 elif message['message'] == 'MD5_passed':
                     self.succeed_files.append(message['message'])
-                    self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+                    self.Lserver_status.setText(
+                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
+                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
+                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
                 elif message['message'] == 'MD5_failed':
                     self.failed_files.append(message['message'])
-                    self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+                    self.Lserver_status.setText(
+                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
+                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
+                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
                 elif message['message'] == 'started':
                     self.received_files.append(message['message'])
-                    self.Lserver_status.setText('{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'.format(len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+                    self.Lserver_status.setText(
+                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
+                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
+                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
             elif message['type'] == 'chat':
                 if message['status'] == 'success':
                     self.chat_sender.terminate()
@@ -497,66 +519,67 @@ class ClientWindow(QMainWindow):
                     self.Emessage_area.moveCursor(QTextCursor.End)
                     self.Emessage_area.insertHtml('<font color=red>✘<font color=black> ')
                 elif message['status'] == 'received':
-                    self.Emessage_area.append('{0}:{1}：\n    {2}'.format(message['from'][0], message['from'][1], message['message']))
+                    self.Emessage_area.append(
+                        '{0}:{1}：\n    {2}'.format(message['from'][0], message['from'][1], message['message']))
                     self.Lserver_status.setText('收到来自{0}:{1}的聊天消息'.format(message['from'][0], message['from'][1]))
         except queue.Empty:
             pass
-    
-    def uiSettingChecker(self):
+
+    def ui_setting_checker(self):
         self.settings.beginGroup('UISetting')
         setting_status_bar = int(self.settings.value('status_bar', True))
         setting_chat_frame = int(self.settings.value('chat_frame', True))
         self.settings.endGroup()
         if setting_status_bar:
-            self.statusbar.show()
+            self.status_bar.show()
         else:
-            self.statusbar.hide()
+            self.status_bar.hide()
         if setting_chat_frame:
             self.chat_frame.show()
         else:
             self.chat_frame.hide()
-        
-    def safeClose(self):
-        '''程序的关闭行为，触发closeEvent事件'''
-        QCoreApplication.instance().quit
+
+    def safe_close(self):
+        """程序的关闭行为，触发closeEvent事件"""
+        QCoreApplication.instance().quit()
         self.close()
-    
-    def findInstanceByName(self, name):
-        '''按文件名在文件列表中查找实例，没有返回None'''
+
+    def find_instance_by_name(self, name):
+        """按文件名在文件列表中查找实例，没有返回None"""
         for inst in self.files:
-            if inst.getFileName() == name:
+            if inst.name == name:
                 return inst
         return None
 
-    def findInstanceByStatus(self, status):
-        '''按文件状态在文件列表中查找实例，没有返回空列表'''
+    def find_instance_by_status(self, status):
+        """按文件状态在文件列表中查找实例，没有返回空列表"""
         inst_list = []
         for inst in self.files:
-            if inst.getFileStatus() == status:
+            if inst.status == status:
                 inst_list.append(inst)
         return inst_list
 
-    def findIndexByName(self, name):
-        '''按文件名在表格视图中查找索引，没有返回None'''
+    def find_index_by_name(self, name):
+        """按文件名在表格视图中查找索引，没有返回None"""
         row = self.file_table.rowCount()
         for i in range(row):
             if self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() == name:
                 return i
         return None
 
-    def fileDialog(self):
-        '''文件选择对话框，制作文件实例'''
+    def file_dialog(self):
+        """文件选择对话框，制作文件实例"""
         # 从配置文件中读取历史路径
         self.settings.beginGroup('Misc')
         setting_path_history = self.settings.value('path_history', '.')
         self.settings.endGroup()
         fname = QFileDialog.getOpenFileNames(self, '请选择文件', setting_path_history)
         if fname[0]:
-            # 获取当前文件列表变量中的路径字典，排除相同文件
-            path_list = [inst.getFilePath() for inst in self.files]
-            for path in fname[0]:
-                if path not in path_list:
-                    self.files.append(FileStatus(path))
+            # 用集合set求新增文件列表
+            new_list = set(fname[0])
+            old_list = {inst.getFilePath() for inst in self.files}
+            for path in new_list - old_list:
+                self.files.append(FileStatus(path))
             self.Lfile_empty.hide()
             # 根据设置构建不同视图
             if not self.setting_detail_view:
@@ -569,27 +592,27 @@ class ClientWindow(QMainWindow):
             self.settings.endGroup()
         self.settings.sync()
 
-    def clientSettingDialog(self):
-        '''客户端设置对话框'''
-        self.clientsetting = def_widget.ClientSettingDialog(self)
-        self.clientsetting.setAttribute(Qt.WA_DeleteOnClose)
-        self.clientsetting.show()
- 
-    def serverSettingDialog(self):
-        '''服务端设置对话框'''
-        self.serversetting = def_widget.ServerSettingDialog(self)
-        self.serversetting.setAttribute(Qt.WA_DeleteOnClose)
-        self.serversetting.show()
+    def client_setting_dialog(self):
+        """客户端设置对话框"""
+        self.client_setting = def_widget.ClientSettingDialog(self)
+        self.client_setting.setAttribute(Qt.WA_DeleteOnClose)
+        self.client_setting.show()
 
-    def uiSettingDialog(self):
-        '''UI设置对话框'''
-        self.uisetting = def_widget.UIDialog(self)
-        self.uisetting.setAttribute(Qt.WA_DeleteOnClose)
-        self.uisetting.destroyed.connect(self.uiSettingChecker)
-        self.uisetting.show()
-            
+    def server_setting_dialog(self):
+        """服务端设置对话框"""
+        self.server_setting = def_widget.ServerSettingDialog(self)
+        self.server_setting.setAttribute(Qt.WA_DeleteOnClose)
+        self.server_setting.show()
+
+    def ui_setting_dialog(self):
+        """UI设置对话框"""
+        self.ui_setting = def_widget.UIDialog(self)
+        self.ui_setting.setAttribute(Qt.WA_DeleteOnClose)
+        self.ui_setting.destroyed.connect(self.ui_setting_checker)
+        self.ui_setting.show()
+
     def closeEvent(self, event):
-        '''程序关闭时触发'''
+        """程序关闭时触发"""
         # 记录关闭时的窗口尺寸
         self.settings.beginGroup('Misc')
         self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
@@ -623,19 +646,20 @@ class ClientWindow(QMainWindow):
             pass
         except AttributeError:
             pass
-    
+
     def keyPressEvent(self, k):
-        '''按ESC时触发的关闭行为'''
+        """按ESC时触发的关闭行为"""
         if k.key() == Qt.Key_Escape:
-            self.safeClose()
+            self.safe_close()
 
     def resizeEvent(self, event):
-        '''调整窗口尺寸时触发'''
+        """调整窗口尺寸时触发"""
         for inst in self.files:
             # 根据表格列宽调整截断文件名
-            changed_text = self.shorten_filename(inst.getFileName(), self.file_table.columnWidth(1))
-            inst.getFileLabel().setText(changed_text)
-            
+            changed_text = self.shorten_filename(inst.name, self.file_table.columnWidth(1))
+            inst.label.setText(changed_text)
+
+
 if __name__ == '__main__':
     # 主程序入口
     app = QApplication(sys.argv)
