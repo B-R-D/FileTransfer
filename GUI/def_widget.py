@@ -9,21 +9,17 @@ from PyQt5.QtCore import Qt, QSettings
 from PyQt5.QtGui import QGuiApplication
 from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout
 from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QLineEdit, QTextEdit, QMenu
-from PyQt5.QtWidgets import QMessageBox, QSpinBox, QCheckBox, QGroupBox, QSplitter, QDoubleSpinBox
-
-
-class WindowSplitter(QSplitter):
-    def __init__(self, orientation, parent):
-        super().__init__(orientation, parent)
-
-    def resizeEvent(self, event):
-        self.parent().resizeEvent(event)
+from PyQt5.QtWidgets import QMessageBox, QSpinBox, QCheckBox, QGroupBox, QDoubleSpinBox
 
 
 class MessageDisplayEdit(QTextEdit):
     def __init__(self, parent):
         super().__init__(parent)
         self.copy_flag = False
+
+    def copy_controller(self, yes):
+        """复制状态记录函数"""
+        self.copy_flag = yes
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
@@ -47,10 +43,6 @@ class MessageDisplayEdit(QTextEdit):
             self.selectAll()
         elif action == act_clear:
             self.clear()
-
-    def copy_controller(self, yes):
-        """复制状态记录函数"""
-        self.copy_flag = yes
 
 
 class MessageWriter(QLineEdit):

@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication, QTextCursor
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QStackedLayout, QMainWindow, QApplication
 from PyQt5.QtWidgets import QWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QTableWidget
-from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QAction, QMessageBox, QProgressBar, QFrame
+from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QAction, QMessageBox, QProgressBar, QFrame, QSplitter
 
 import server
 import trans_client
@@ -104,7 +104,7 @@ class ClientWindow(QMainWindow):
         # 定义文件传输区域及消息传输区域
         self.sender_frame = QFrame()
         self.chat_frame = QFrame()
-        self.splitter = def_widget.WindowSplitter(Qt.Horizontal, self)
+        self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setHandleWidth(self.width / 384)
         self.splitter.splitterMoved.connect(self.resizeEvent)
         self.splitter.addWidget(self.sender_frame)
@@ -112,7 +112,6 @@ class ClientWindow(QMainWindow):
         self.splitter.handle(1).setStyleSheet('QSplitterHandle{background-color: rgb(210,210,210)}')
 
         # 定义窗口主控件
-        self.widget = QWidget()
         self.setCentralWidget(self.splitter)
 
         # 定义菜单栏：文件，设置
@@ -269,12 +268,17 @@ class ClientWindow(QMainWindow):
     def detail_viewer(self):
         """详细视图：包括按钮、进度条、详细分片进度、文件大小、状态"""
         if self.file_table.rowCount():
+            file_flag = True
             file_name = [self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() for i in
                          range(self.file_table.rowCount())]
         else:
+            file_flag = False
             file_name = []
         self.file_table.setColumnCount(5)
         self.file_table.setRowCount(len(self.files))
+        self.file_table.verticalScrollBar().setStyleSheet('QScrollBar{{width:{}px;}}'.format(self.width / 192))
+        for i in range(len(self.files)):
+            self.file_table.verticalHeader().setSectionResizeMode(i, QHeaderView.Fixed)
         self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
         # 要用表头的ResizeMode函数而不能用列的ResizeMode函数
         self.file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -283,6 +287,7 @@ class ClientWindow(QMainWindow):
         self.file_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.file_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.file_table.horizontalHeader().setSectionsClickable(False)
+        self.file_table.verticalHeader().setSectionsClickable(False)
         for inst in self.files:
             if inst.name not in file_name:
                 prog_widget = QWidget()
@@ -316,9 +321,17 @@ class ClientWindow(QMainWindow):
                 self.file_table.setItem(index, 3, file_size)
                 self.file_table.setItem(index, 4, file_status)
         self.file_table.show()
-        for inst in self.files:
-            inst.label.setText(self.shorten_filename(inst.name, self.file_table.columnWidth(1)))
-
+        # 原来无数据时直接加载新行，否则计算是否出现滚动条
+        row_height = self.file_table.rowHeight(0) * self.file_table.rowCount()
+        header_height = self.file_table.horizontalHeader().height()
+        if file_flag and row_height + header_height >= self.file_table.height():
+            for inst in self.files:
+                changed_text = self.shorten_filename(inst.name, self.file_table.columnWidth(1) - self.width / 192)
+                inst.label.setText(changed_text)
+        else:
+            for inst in self.files:
+                changed_text = self.shorten_filename(inst.name, self.file_table.columnWidth(1))
+                inst.label.setText(changed_text)
 
     def button_pressed(self):
         self.settings.beginGroup('ClientSetting')
@@ -643,7 +656,6 @@ class ClientWindow(QMainWindow):
             self.chat_sender.terminate()
             self.chat_sender.join()
             self.chat_sender.close()
-            print(self.chat_sender.is_alive())
         except ValueError:
             pass
         except AttributeError:
