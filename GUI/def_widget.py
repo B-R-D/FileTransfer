@@ -334,7 +334,7 @@ class UIDialog(QWidget):
         self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, parent_geo.y() + (parent_geo.height() - self.width()) / 2)
         
         self.settings.beginGroup('UISetting')
-        self.Lview = QLabel('启用详细视图(重启后生效)')
+        self.Lview = QLabel('启用详细视图(重启生效)')
         self.Cview = QCheckBox(self)
         setting_view = int(self.settings.value('detail_view', False))
         self.Cview.setChecked(setting_view)

@@ -29,10 +29,11 @@ class FileStatus:
         self.name = os.path.split(self.path)[1]
         self._size = os.path.getsize(self.path)
         self._all = self._size // 65000 + 1
-        self._status = 'pending'
+        self._status = ['pending', '等待传输']
 
-        self.button = QPushButton(QIcon(os.path.join('icon', 'pending.png')), '')
-        self.button.setToolTip('等待传输')
+        picname = self._status[0] + '.png'
+        self.button = QPushButton(QIcon(os.path.join('icon', picname)), '')
+        self.button.setToolTip(self._status[1])
         self.button.setFlat(True)
 
         self.prog = QProgressBar()
@@ -53,19 +54,11 @@ class FileStatus:
     @status.setter
     def status(self, new_status):
         """根据新设置的状态切换按钮图片及tooltip"""
-        self._status = new_status
-        if self._status == 'pending':
-            self.button.setIcon(QIcon(os.path.join('icon', 'pending.png')))
-            self.button.setToolTip('等待传输')
-        elif self._status == 'error':
-            self.button.setIcon(QIcon(os.path.join('icon', 'error.png')))
-            self.button.setToolTip('传输错误')
-        elif self._status == 'complete':
-            self.button.setIcon(QIcon(os.path.join('icon', 'complete.png')))
-            self.button.setToolTip('传输完成')
-        elif self._status == 'uploading':
-            self.button.setIcon(QIcon(os.path.join('icon', 'uploading.png')))
-            self.button.setToolTip('传输中')
+        status = {'pending': '等待传输', 'error': '传输错误', 'complete': '传输完成', 'uploading': '传输中'}
+        self._status[0] = new_status
+        self._status[1] = status[self._status[0]]
+        self.button.setIcon(QIcon(os.path.join('icon', self._status[0].join('.png'))))
+        self.button.setToolTip(self._status[1])
 
 
 class ClientWindow(QMainWindow):
@@ -113,7 +106,6 @@ class ClientWindow(QMainWindow):
 
         # 定义窗口主控件
         self.setCentralWidget(self.splitter)
-
         # 定义菜单栏：文件，设置
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu('文件(&F)')
@@ -156,7 +148,11 @@ class ClientWindow(QMainWindow):
         self.Lfile_empty = QLabel('未选中文件')
         self.Lfile_empty.setAlignment(Qt.AlignTop)
         self.file_table = QTableWidget()
+        self.file_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.file_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.file_table.verticalScrollBar().setStyleSheet('QScrollBar{{width:{}px;}}'.format(self.width / 192))
+        self.file_table.verticalHeader().setSectionsClickable(False)
+        self.file_table.horizontalHeader().setSectionsClickable(False)
         self.file_table.hide()
         self.Bfile_sender = QPushButton('发送', self)
         self.Bfile_sender.clicked.connect(self.file_checker)
@@ -229,55 +225,53 @@ class ClientWindow(QMainWindow):
             self.server_timer.timeout.connect(self.server_status)
             self.server_timer.start(100)
 
-    def simple_viewer(self):
+    def simple_viewer(self, add_files):
         """简明视图：按钮及进度条"""
-        # 通过文件名的tooltip生成视图中现有的文件名列表
-        if self.file_table.rowCount():
-            file_name = [self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() for i in
-                         range(self.file_table.rowCount())]
-        else:
-            file_name = []
-
         # 设置简明视图样式：无框线，水平抬头不可见，按钮列自适应，文件名列宽自适应留白
         self.file_table.setColumnCount(2)
-        self.file_table.setRowCount(len(self.files))
+        row = len(self.files) + len(add_files)
+        self.file_table.setRowCount(row)
         self.file_table.setShowGrid(False)
+
+        for i in range(row):
+            self.file_table.verticalHeader().setSectionResizeMode(i, QHeaderView.Fixed)
         self.file_table.horizontalHeader().setVisible(False)
+        self.file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.file_table.resizeColumnToContents(0)
 
         # 针对新选择的文件在列表中增加新增文件的行
-        for inst in self.files:
-            if inst.name not in file_name:
-                prog_widget = QWidget()
-                prog_stack = QStackedLayout()
-                prog_stack.addWidget(inst.prog)
-                prog_stack.addWidget(inst.label)
-                prog_stack.setStackingMode(QStackedLayout.StackAll)
-                prog_widget.setLayout(prog_stack)
+        for inst in add_files:
+            prog_widget = QWidget()
+            prog_stack = QStackedLayout()
+            prog_stack.addWidget(inst.prog)
+            prog_stack.addWidget(inst.label)
+            prog_stack.setStackingMode(QStackedLayout.StackAll)
+            prog_widget.setLayout(prog_stack)
 
-                inst.label.setText(inst.name)
-                inst.button.clicked.connect(functools.partial(self.del_file, inst))
-                self.file_table.setCellWidget(self.files.index(inst), 0, inst.button)
-                self.file_table.setCellWidget(self.files.index(inst), 1, prog_widget)
+            inst.label.setText(inst.name)
+            inst.button.clicked.connect(functools.partial(self.del_file, inst))
+            inst.button.pressed.connect(self.button_pressed)
+            inst.button.released.connect(self.button_released)
+
+            index = add_files.index(inst) + len(self.files)
+            self.file_table.setCellWidget(index, 0, inst.button)
+            self.file_table.setCellWidget(index, 1, prog_widget)
+        self.files += add_files
         self.file_table.show()
         # 表格显示后截断文件名
         for inst in self.files:
             inst.label.setText(self.shorten_filename(inst.name, self.file_table.columnWidth(1)))
 
-    def detail_viewer(self):
+    def detail_viewer(self, add_files):
         """详细视图：包括按钮、进度条、详细分片进度、文件大小、状态"""
         if self.file_table.rowCount():
             file_flag = True
-            file_name = [self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() for i in
-                         range(self.file_table.rowCount())]
         else:
             file_flag = False
-            file_name = []
+        row = len(self.files) + len(add_files)
         self.file_table.setColumnCount(5)
-        self.file_table.setRowCount(len(self.files))
-        self.file_table.verticalScrollBar().setStyleSheet('QScrollBar{{width:{}px;}}'.format(self.width / 192))
-        for i in range(len(self.files)):
+        self.file_table.setRowCount(row)
+        for i in range(row):
             self.file_table.verticalHeader().setSectionResizeMode(i, QHeaderView.Fixed)
         self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
         # 要用表头的ResizeMode函数而不能用列的ResizeMode函数
@@ -286,40 +280,34 @@ class ClientWindow(QMainWindow):
         self.file_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.file_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.file_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.file_table.horizontalHeader().setSectionsClickable(False)
-        self.file_table.verticalHeader().setSectionsClickable(False)
-        for inst in self.files:
-            if inst.name not in file_name:
-                prog_widget = QWidget()
-                prog_stack = QStackedLayout()
-                prog_stack.addWidget(inst.prog)
-                prog_stack.addWidget(inst.label)
-                prog_stack.setStackingMode(QStackedLayout.StackAll)
-                prog_widget.setLayout(prog_stack)
-                inst.label.setText(inst.name)
-                # 定义按钮点击删除，长按全清的行为
-                inst.button.clicked.connect(functools.partial(self.del_file, inst))
-                inst.button.pressed.connect(self.button_pressed)
-                inst.button.released.connect(self.button_released)
+        for inst in add_files:
+            prog_stack = QStackedLayout()
+            prog_stack.addWidget(inst.prog)
+            prog_stack.addWidget(inst.label)
+            prog_stack.setStackingMode(QStackedLayout.StackAll)
+            prog_widget = QWidget()
+            prog_widget.setLayout(prog_stack)
+            inst.label.setText(inst.name)
+            # 定义按钮点击删除，长按全清的行为
+            inst.button.clicked.connect(functools.partial(self.del_file, inst))
+            inst.button.pressed.connect(self.button_pressed)
+            inst.button.released.connect(self.button_released)
 
-                # 设置各单元格样式：不可选中且VH居中
-                file_prog = QTableWidgetItem('0.00 %')
-                file_prog.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-                file_prog.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-                file_size = QTableWidgetItem(inst.size)
-                file_size.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-                file_size.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-                file_status = QTableWidgetItem(inst.button.toolTip())
-                file_status.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-                file_status.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            # 设置各单元格样式：居中
+            file_prog = QTableWidgetItem('0.00 %')
+            file_prog.setTextAlignment(Qt.AlignCenter)
+            file_size = QTableWidgetItem(inst.size)
+            file_size.setTextAlignment(Qt.AlignCenter)
+            file_status = QTableWidgetItem(inst.status[1])
+            file_status.setTextAlignment(Qt.AlignCenter)
 
-                # 用文件列表变量中的索引排列文件
-                index = self.files.index(inst)
-                self.file_table.setCellWidget(index, 0, inst.button)
-                self.file_table.setCellWidget(index, 1, prog_widget)
-                self.file_table.setItem(index, 2, file_prog)
-                self.file_table.setItem(index, 3, file_size)
-                self.file_table.setItem(index, 4, file_status)
+            index = add_files.index(inst) + len(self.files)
+            self.file_table.setCellWidget(index, 0, inst.button)
+            self.file_table.setCellWidget(index, 1, prog_widget)
+            self.file_table.setItem(index, 2, file_prog)
+            self.file_table.setItem(index, 3, file_size)
+            self.file_table.setItem(index, 4, file_status)
+        self.files += add_files
         self.file_table.show()
         # 原来无数据时直接加载新行，否则计算是否出现滚动条
         row_height = self.file_table.rowHeight(0) * self.file_table.rowCount()
@@ -409,7 +397,7 @@ class ClientWindow(QMainWindow):
             self.settings.endGroup()
             # 更改表格中文件行的状态
             for inst in self.files:
-                inst.status = 'uploading'
+                inst.status[0] = 'uploading'
                 inst.prog.setValue(0)
                 index = self.find_index_by_name(inst.name)
                 self.file_table.item(index, 4).setText('传输中')
@@ -442,12 +430,12 @@ class ClientWindow(QMainWindow):
                 self.settings.endGroup()
                 # 信息队列：依据MD5检查结果设置文件状态
                 if message['message'] == 'MD5_passed':
-                    self.find_instance_by_name(message['name']).status = 'complete'
+                    self.find_instance_by_name(message['name']).status[0] = 'complete'
                     self.file_table.item(self.find_index_by_name(message['name']), 4).setText('传输完成')
                     if setting_del_source:
                         os.remove(self.find_instance_by_name(message['name']).path)
                 elif message['message'] == 'MD5_failed':
-                    self.find_instance_by_name(message['name']).status = 'error'
+                    self.find_instance_by_name(message['name']).status[0] = 'error'
                     self.file_table.item(self.find_index_by_name(message['name']), 4).setText('传输错误')
                 self.file_table.item(self.find_index_by_name(message['name']), 2).setText('100 %')
 
@@ -570,7 +558,7 @@ class ClientWindow(QMainWindow):
         """按文件状态在文件列表中查找实例，没有返回空列表"""
         inst_list = []
         for inst in self.files:
-            if inst.status == status:
+            if inst.status[0] == status:
                 inst_list.append(inst)
         return inst_list
 
@@ -590,17 +578,18 @@ class ClientWindow(QMainWindow):
         self.settings.endGroup()
         fname = QFileDialog.getOpenFileNames(self, '请选择文件', setting_path_history)
         if fname[0]:
-            # 用集合set求新增文件列表
+            # 用集合set求新增文件路径列表
             new_list = set(fname[0])
             old_list = {inst.path for inst in self.files}
-            for path in new_list - old_list:
-                self.files.append(FileStatus(path))
+            add_list = new_list - old_list
+            # 纯新增文件列表
+            add_files = [FileStatus(path) for path in add_list]
             self.Lfile_empty.hide()
             # 根据设置构建不同视图
             if not self.setting_detail_view:
-                self.simple_viewer()
+                self.simple_viewer(add_files)
             else:
-                self.detail_viewer()
+                self.detail_viewer(add_files)
             # 记录历史路径
             self.settings.beginGroup('Misc')
             self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
