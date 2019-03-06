@@ -151,6 +151,7 @@ class ClientWindow(QMainWindow):
         self.file_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.file_table.setSelectionMode(QAbstractItemView.NoSelection)
         self.file_table.verticalScrollBar().setStyleSheet('QScrollBar{{width:{}px;}}'.format(self.width / 192))
+        self.file_table.verticalScrollBar().setContextMenuPolicy(Qt.NoContextMenu)
         self.file_table.verticalHeader().setSectionsClickable(False)
         self.file_table.horizontalHeader().setSectionsClickable(False)
         self.file_table.hide()
@@ -264,15 +265,10 @@ class ClientWindow(QMainWindow):
 
     def detail_viewer(self, add_files):
         """详细视图：包括按钮、进度条、详细分片进度、文件大小、状态"""
-        if self.file_table.rowCount():
-            file_flag = True
-        else:
-            file_flag = False
         row = len(self.files) + len(add_files)
         self.file_table.setColumnCount(5)
         self.file_table.setRowCount(row)
-        for i in range(row):
-            self.file_table.verticalHeader().setSectionResizeMode(i, QHeaderView.Fixed)
+        self.file_table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
         # 要用表头的ResizeMode函数而不能用列的ResizeMode函数
         self.file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -312,7 +308,7 @@ class ClientWindow(QMainWindow):
         # 原来无数据时直接加载新行，否则计算是否出现滚动条
         row_height = self.file_table.rowHeight(0) * self.file_table.rowCount()
         header_height = self.file_table.horizontalHeader().height()
-        if file_flag and row_height + header_height >= self.file_table.height():
+        if row_height + header_height >= self.file_table.height():
             for inst in self.files:
                 changed_text = self.shorten_filename(inst.name, self.file_table.columnWidth(1) - self.width / 192)
                 inst.label.setText(changed_text)
