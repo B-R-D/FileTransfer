@@ -233,14 +233,12 @@ class ClientWindow(QMainWindow):
         row = len(self.files) + len(add_files)
         self.file_table.setRowCount(row)
         self.file_table.setShowGrid(False)
-
-        for i in range(row):
-            self.file_table.verticalHeader().setSectionResizeMode(i, QHeaderView.Fixed)
+        self.file_table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         self.file_table.horizontalHeader().setVisible(False)
         self.file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
 
-        # 针对新选择的文件在列表中增加新增文件的行
+        num = 0
         for inst in add_files:
             prog_widget = QWidget()
             prog_stack = QStackedLayout()
@@ -249,12 +247,12 @@ class ClientWindow(QMainWindow):
             prog_stack.setStackingMode(QStackedLayout.StackAll)
             prog_widget.setLayout(prog_stack)
 
-            inst.label.setText(inst.name)
             inst.button.clicked.connect(functools.partial(self.del_file, inst))
             inst.button.pressed.connect(self.button_pressed)
             inst.button.released.connect(self.button_released)
 
-            index = add_files.index(inst) + len(self.files)
+            index = num + len(self.files)
+            num += 1
             self.file_table.setCellWidget(index, 0, inst.button)
             self.file_table.setCellWidget(index, 1, prog_widget)
         self.files += add_files
@@ -265,17 +263,16 @@ class ClientWindow(QMainWindow):
 
     def detail_viewer(self, add_files):
         """详细视图：包括按钮、进度条、详细分片进度、文件大小、状态"""
-        row = len(self.files) + len(add_files)
         self.file_table.setColumnCount(5)
+        row = len(self.files) + len(add_files)
         self.file_table.setRowCount(row)
         self.file_table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         self.file_table.setHorizontalHeaderLabels(['', '文件名', '传输进度', '文件大小', '状态'])
         # 要用表头的ResizeMode函数而不能用列的ResizeMode函数
-        self.file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.file_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.file_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.file_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.file_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+
+        num = 0
         for inst in add_files:
             prog_stack = QStackedLayout()
             prog_stack.addWidget(inst.prog)
@@ -283,7 +280,6 @@ class ClientWindow(QMainWindow):
             prog_stack.setStackingMode(QStackedLayout.StackAll)
             prog_widget = QWidget()
             prog_widget.setLayout(prog_stack)
-            inst.label.setText(inst.name)
             # 定义按钮点击删除，长按全清的行为
             inst.button.clicked.connect(functools.partial(self.del_file, inst))
             inst.button.pressed.connect(self.button_pressed)
@@ -297,7 +293,8 @@ class ClientWindow(QMainWindow):
             file_status = QTableWidgetItem(inst.status[1])
             file_status.setTextAlignment(Qt.AlignCenter)
 
-            index = add_files.index(inst) + len(self.files)
+            index = num + len(self.files)
+            num += 1
             self.file_table.setCellWidget(index, 0, inst.button)
             self.file_table.setCellWidget(index, 1, prog_widget)
             self.file_table.setItem(index, 2, file_prog)
@@ -305,7 +302,8 @@ class ClientWindow(QMainWindow):
             self.file_table.setItem(index, 4, file_status)
         self.files += add_files
         self.file_table.show()
-        # 原来无数据时直接加载新行，否则计算是否出现滚动条
+        # 计算是否出现滚动条
+        # 能否优化为判断当前是否有滚动条后跳过执行？
         row_height = self.file_table.rowHeight(0) * self.file_table.rowCount()
         header_height = self.file_table.horizontalHeader().height()
         if row_height + header_height >= self.file_table.height():
