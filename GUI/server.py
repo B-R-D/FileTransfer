@@ -3,12 +3,12 @@
 UDP服务端，等待客户端的连接。
 有连接呼入时接收文件并保存。
 """
-import os
-import threading
-import json
 import asyncio
 import hashlib
+import json
+import os
 import random
+import threading
 
 
 def display_file_length(file_size):
@@ -16,11 +16,11 @@ def display_file_length(file_size):
     if file_size < 1024:
         return '{0:.1f}B'.format(file_size)
     elif 1024 <= file_size < 1048576:
-        return '{0:.1f}kB'.format(file_size/1024)
+        return '{0:.1f}kB'.format(file_size / 1024)
     elif 1048576 <= file_size < 1073741824:
-        return '{0:.1f}MB'.format(file_size/1048576)
+        return '{0:.1f}MB'.format(file_size / 1048576)
     else:
-        return '{0:.1f}GB'.format(file_size/1073741824)
+        return '{0:.1f}GB'.format(file_size / 1073741824)
 
 
 class ServerProtocol:
@@ -31,7 +31,7 @@ class ServerProtocol:
         self.transport = None
         # 计数器字典：{name1: {part1: counter, ...}, ...}
         self.time_counter = {}
-    
+
     def connection_made(self, transport):
         self.transport = transport
 
@@ -66,10 +66,10 @@ class ServerProtocol:
             self.que.put({'type': 'chat', 'status': 'received', 'message': info['message'], 'from': addr})
             msg = json.dumps({'type': 'chat', 'message': info['message'], 'data': 'get'}).encode()
             self.transport.sendto(msg, addr)
-    
+
     def connection_lost(self):
         print('Server terminated.')
-    
+
     def write_data(self, info, data, addr):
         """写入本地数据并调用get消息回发函数"""
         with open(os.path.join(self.save_dir, info['name']), 'ab') as filedata:

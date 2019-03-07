@@ -1,21 +1,21 @@
 # coding:utf-8
 """UDP客户端GUI版"""
-import os
-import sys
-import queue
 import functools
+import os
+import queue
+import sys
 from multiprocessing import Process, Queue
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication, QTextCursor
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QStackedLayout, QMainWindow, QApplication
-from PyQt5.QtWidgets import QWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QTableWidget
 from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QAction, QMessageBox, QProgressBar, QFrame, QSplitter
+from PyQt5.QtWidgets import QWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QTableWidget
 
-import server
-import trans_client
 import chat_client
 import def_widget
+import server
+import trans_client
 
 
 class FileStatus:
@@ -24,6 +24,7 @@ class FileStatus:
     可获取类属性：文件路径，文件名，状态按钮，进度条，文件名标签；
     包含属性装饰器：文件大小（只读），文件状态（读写）。
     """
+
     def __init__(self, path):
         self.path = path
         self.name = os.path.split(self.path)[1]
@@ -65,6 +66,7 @@ class ClientWindow(QMainWindow):
     """
     GUI主窗口类。
     """
+
     def __init__(self):
         super().__init__()
         # 初始化发送/接收文件列表：存放待发送文件的绝对路径

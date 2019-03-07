@@ -7,9 +7,9 @@ import os
 
 from PyQt5.QtCore import Qt, QSettings
 from PyQt5.QtGui import QGuiApplication
-from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout
-from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QLineEdit, QTextEdit, QMenu
 from PyQt5.QtWidgets import QMessageBox, QSpinBox, QCheckBox, QGroupBox, QDoubleSpinBox
+from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QLineEdit, QTextEdit, QMenu
+from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout
 
 
 class MessageDisplayEdit(QTextEdit):
@@ -78,6 +78,7 @@ class ClientSettingDialog(QWidget):
     """
     发送端设置对话框(模态)
     """
+
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
@@ -96,7 +97,7 @@ class ClientSettingDialog(QWidget):
         parent_geo = self.parent.geometry()
         self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
                   parent_geo.y() + (parent_geo.height() - self.width()) / 2)
-        
+
         self.settings.beginGroup('ClientSetting')
         self.Lserver_ip = QLabel('接收端IP')
         self.Eserver_ip = QLineEdit(self)
@@ -110,14 +111,14 @@ class ClientSettingDialog(QWidget):
         self.Sserver_port.setContextMenuPolicy(Qt.NoContextMenu)
         setting_server_port = int(self.settings.value('server_port', 12345))
         self.Sserver_port.setValue(setting_server_port)
-        
+
         self.Gnet = QGroupBox('网络设置')
         net_form = QFormLayout()
         net_form.setSpacing(10)
         net_form.addRow(self.Lserver_ip, self.Eserver_ip)
         net_form.addRow(self.Lserver_port, self.Sserver_port)
         self.Gnet.setLayout(net_form)
-        
+
         self.Lfile_num = QLabel('同时传输的文件数  ')
         self.Sfile_num = QSpinBox(self)
         self.Sfile_num.setRange(1, 3)
@@ -139,7 +140,7 @@ class ClientSettingDialog(QWidget):
         setting_del_timeout = float(self.settings.value('del_timeout', 1))
         self.Sdel_timeout.setValue(setting_del_timeout)
         self.settings.endGroup()
-        
+
         self.Gtrans = QGroupBox('传输设置')
         trans_form = QFormLayout()
         trans_form.setSpacing(10)
@@ -147,7 +148,7 @@ class ClientSettingDialog(QWidget):
         trans_form.addRow(self.Ldel_timeout, self.Sdel_timeout)
         trans_form.addRow(self.Ldel_source, self.Cdel_source)
         self.Gtrans.setLayout(trans_form)
-        
+
         self.Bconfirm = QPushButton('确定', self)
         self.Bconfirm.setDefault(True)
         self.Bcancel = QPushButton('取消', self)
@@ -158,7 +159,7 @@ class ClientSettingDialog(QWidget):
         hbox.addWidget(self.Bconfirm)
         hbox.addWidget(self.Bcancel)
         hbox.addStretch(1)
-        
+
         vbox = QVBoxLayout()
         vbox.setSpacing(20)
         vbox.addWidget(self.Gnet)
@@ -166,7 +167,7 @@ class ClientSettingDialog(QWidget):
         vbox.addLayout(hbox)
         self.setLayout(vbox)
         self.setWindowTitle('发送端设置')
-    
+
     def store(self):
         # 双端端口号设置不能相同
         self.settings.beginGroup('ServerSetting')
@@ -189,7 +190,7 @@ class ClientSettingDialog(QWidget):
             self.settings.sync()
             self.settings.endGroup()
             self.close()
-        
+
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
             self.close()
@@ -199,6 +200,7 @@ class ServerSettingDialog(QWidget):
     """
     服务端设置对话框(模态)
     """
+
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
@@ -215,9 +217,9 @@ class ServerSettingDialog(QWidget):
         self.reso_width = self.resolution.width()
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
-        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, 
+        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
                   parent_geo.y() + (parent_geo.height() - self.width()) / 2)
-        
+
         self.settings.beginGroup('ServerSetting')
         self.Lincoming_ip = QLabel('呼入IP')
         self.Eincoming_ip = QLineEdit(self)
@@ -231,14 +233,14 @@ class ServerSettingDialog(QWidget):
         self.Sbind_port.setContextMenuPolicy(Qt.NoContextMenu)
         setting_bind_port = int(self.settings.value('bind_port', 54321))
         self.Sbind_port.setValue(setting_bind_port)
-        
+
         self.Gnet = QGroupBox('网络设置')
         net_form = QFormLayout()
         net_form.setSpacing(10)
         net_form.addRow(self.Lincoming_ip, self.Eincoming_ip)
         net_form.addRow(self.Lbind_port, self.Sbind_port)
         self.Gnet.setLayout(net_form)
-        
+
         self.Lopen_server = QLabel('接收端自启动      ')
         self.Copen_server = QCheckBox(self)
         setting_open_server = int(self.settings.value('open_server', True))
@@ -252,7 +254,7 @@ class ServerSettingDialog(QWidget):
         setting_receive_dir = self.settings.value('receive_dir', os.path.abspath('.'))
         self.Ereceive_dir.setText(setting_receive_dir)
         self.settings.endGroup()
-        
+
         self.Gtrans = QGroupBox('传输设置')
         trans_form = QFormLayout()
         trans_form.setSpacing(10)
@@ -260,7 +262,7 @@ class ServerSettingDialog(QWidget):
         trans_form.addRow(self.Lreceive_dir, self.Breceive_dir)
         trans_form.addRow(self.Ereceive_dir)
         self.Gtrans.setLayout(trans_form)
-        
+
         self.Bconfirm = QPushButton('确定', self)
         self.Bconfirm.setDefault(True)
         self.Bcancel = QPushButton('取消', self)
@@ -271,7 +273,7 @@ class ServerSettingDialog(QWidget):
         hbox.addWidget(self.Bconfirm)
         hbox.addWidget(self.Bcancel)
         hbox.addStretch(1)
-        
+
         vbox = QVBoxLayout()
         vbox.setSpacing(20)
         vbox.addWidget(self.Gnet)
@@ -279,7 +281,7 @@ class ServerSettingDialog(QWidget):
         vbox.addLayout(hbox)
         self.setLayout(vbox)
         self.setWindowTitle('接收端设置')
-    
+
     def store(self):
         self.settings.beginGroup('ClientSetting')
         setting_server_port = int(self.settings.value('server_port', 12345))
@@ -300,14 +302,14 @@ class ServerSettingDialog(QWidget):
             self.settings.sync()
             self.settings.endGroup()
             self.close()
-    
+
     def choose_dir(self):
         self.settings.beginGroup('ServerSetting')
         path = QFileDialog.getExistingDirectory(self, '选择目录', self.Ereceive_dir.text())
         if path:
             self.Ereceive_dir.setText(path)
         self.settings.endGroup()
-    
+
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
             self.close()
@@ -317,6 +319,7 @@ class UIDialog(QWidget):
     """
     界面设置对话框(模态)
     """
+
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
@@ -325,14 +328,15 @@ class UIDialog(QWidget):
 
     def init_ui(self):
         self.setWindowModality(Qt.ApplicationModal)
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
         self.resolution = QGuiApplication.primaryScreen().availableGeometry()
         self.reso_height = self.resolution.height()
         self.reso_width = self.resolution.width()
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
-        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2, parent_geo.y() + (parent_geo.height() - self.width()) / 2)
-        
+        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
+                  parent_geo.y() + (parent_geo.height() - self.width()) / 2)
+
         self.settings.beginGroup('UISetting')
         self.Lview = QLabel('启用详细视图(重启生效)')
         self.Cview = QCheckBox(self)
@@ -342,20 +346,20 @@ class UIDialog(QWidget):
         self.Cstatus_bar = QCheckBox(self)
         setting_status_bar = int(self.settings.value('status_bar', True))
         self.Cstatus_bar.setChecked(setting_status_bar)
-        
+
         self.Lchat_frame = QLabel('启用聊天栏')
         self.Cchat_frame = QCheckBox(self)
         setting_chat_frame = int(self.settings.value('chat_frame', True))
         self.Cchat_frame.setChecked(setting_chat_frame)
         self.settings.endGroup()
-        
+
         self.Bconfirm = QPushButton('确定', self)
         self.Bconfirm.setDefault(True)
         self.Bcancel = QPushButton('取消', self)
-        
+
         self.Bconfirm.clicked.connect(self.store)
         self.Bcancel.clicked.connect(self.close)
-        
+
         form = QFormLayout()
         form.setSpacing(30)
         form.addRow(self.Lview, self.Cview)
@@ -369,7 +373,7 @@ class UIDialog(QWidget):
         form.addRow(hbox)
         self.setLayout(form)
         self.setWindowTitle('界面设置')
-    
+
     def store(self):
         self.settings.beginGroup('UISetting')
         self.settings.setValue('detail_view', int(self.Cview.isChecked()))
@@ -378,7 +382,7 @@ class UIDialog(QWidget):
         self.settings.sync()
         self.settings.endGroup()
         self.close()
-        
+
     def keyPressEvent(self, k):
         if k.key() == Qt.Key_Escape:
             self.close()

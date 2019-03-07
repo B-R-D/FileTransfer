@@ -3,16 +3,17 @@
 UDP客户端，尝试连接服务端。
 当建立连接后发送指定数据。
 """
-import os
-import threading
-import random
-import hashlib
 import asyncio
+import hashlib
 import json
+import os
+import random
+import threading
 
 
 class FilePart:
     """文件信息类"""
+
     def __init__(self, name, size, part, total, data):
         self.name = name
         self.size = size
@@ -45,6 +46,7 @@ class ClientProtocol:
     """
     客户端主控制类。
     """
+
     def __init__(self, gener, path, que, tc, loop):
         self.gener = gener
         self.path = path
@@ -105,11 +107,11 @@ class ClientProtocol:
     def error_received(self, exc):
         """异常处理函数，先忽略"""
         pass
-        
+
     def connection_lost(self, exc):
         """连接断开时的行为：现在不会调用"""
         pass
-        
+
     def file_sender(self):
         """数据报的发送行为"""
         # 判定MD5是否计算完成
@@ -131,7 +133,7 @@ class ClientProtocol:
         print('Sending file:{0} (Part {1}/{2})...'.format(self.now.name, self.now.part + 1, self.now.total), end='')
         self.message_sender(fdata)
         print('Done.', end='\n')
-    
+
     def message_sender(self, message):
         """
         自带随机秒重发机制的消息回发(至少0.2s)
@@ -140,7 +142,7 @@ class ClientProtocol:
         self.time_counter.cancel()
         self.transport.sendto(message)
         self.time_counter = self.loop.call_later(0.2 + random.random(), self.message_sender, message)
-    
+
     def md5_gener(self):
         """计算MD5值"""
         md5 = hashlib.md5()

@@ -1,13 +1,14 @@
 # coding:utf-8
 """聊天客户端"""
 
-import random
 import asyncio
 import json
+import random
 
 
 class ClientProtocol:
     """聊天客户端主控制类。"""
+
     def __init__(self, message, que, loop):
         self.message = message
         self.que = que
@@ -37,11 +38,11 @@ class ClientProtocol:
     def error_received(self, exc):
         """异常处理函数，先忽略"""
         pass
-        
+
     def connection_lost(self):
         """断开连接的行为"""
         self.que.put({'type': 'chat', 'status': 'failed'})
-        
+
     def chat_sender(self, cdata):
         """数据报的发送行为"""
         self.time_counter.cancel()
@@ -71,4 +72,4 @@ def chat_starter(host, port, message, que):
     控制变量：同时运行的线程数
     数据变量：消息
     """
-    asyncio.run(chat_main(host, port, message, que),)
+    asyncio.run(chat_main(host, port, message, que), )
