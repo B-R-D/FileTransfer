@@ -84,7 +84,7 @@ class ServerProtocol:
         """自带随机秒重发机制的消息回发"""
         self.transport.sendto(json.dumps(message).encode(), addr)
         self.time_counter[message['name']][message['part']] = \
-            self.loop.call_later(random.random() + 0.5, self.message_sender, message, addr)
+            self.loop.call_later(random.uniform(0.2, 0.5), self.message_sender, message, addr)
 
     def md5_checker(self, info, addr):
         """MD5检查函数，不带重发机制"""

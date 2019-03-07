@@ -23,7 +23,7 @@ class ClientProtocol:
         cdata = json.dumps({'type': 'chat', 'message': self.message}).encode()
         self.chat_sender(cdata)
 
-    def datagram_received(self, message):
+    def datagram_received(self, message, addr):
         """
         接收数据报时的行为：
         依据传递的信息执行响应。
@@ -47,7 +47,7 @@ class ClientProtocol:
         """数据报的发送行为"""
         self.time_counter.cancel()
         self.transport.sendto(cdata)
-        self.time_counter = self.loop.call_later(0.2 + random.random(), self.chat_sender, cdata)
+        self.time_counter = self.loop.call_later(random.uniform(0.2, 0.5), self.chat_sender, cdata)
 
 
 async def chat_main(host, port, message, que):

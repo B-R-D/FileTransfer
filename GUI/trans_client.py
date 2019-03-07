@@ -136,12 +136,12 @@ class ClientProtocol:
 
     def message_sender(self, message):
         """
-        自带随机秒重发机制的消息回发(至少0.2s)
+        自带随机秒重发机制的消息回发(0.1-0.3s)
         注意此处传入的参数必须是用json打包好的
         """
         self.time_counter.cancel()
         self.transport.sendto(message)
-        self.time_counter = self.loop.call_later(0.2 + random.random(), self.message_sender, message)
+        self.time_counter = self.loop.call_later(random.uniform(0.1, 0.3), self.message_sender, message)
 
     def md5_gener(self):
         """计算MD5值"""

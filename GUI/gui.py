@@ -58,7 +58,8 @@ class FileStatus:
         status = {'pending': '等待传输', 'error': '传输错误', 'complete': '传输完成', 'uploading': '传输中'}
         self._status[0] = new_status
         self._status[1] = status[self._status[0]]
-        self.button.setIcon(QIcon(os.path.join('icon', self._status[0].join('.png'))))
+        picname = self._status[0] + '.png'
+        self.button.setIcon(QIcon(os.path.join('icon', picname)))
         self.button.setToolTip(self._status[1])
 
 
