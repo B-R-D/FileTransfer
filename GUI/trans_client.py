@@ -34,26 +34,23 @@ def display_file_length(file_size):
         return '{0:.1f}GB'.format(file_size / 1073741824)
 
 
-def file_spliter(fstream):
-    """包装并返回数据块的生成器（单块限定64K）"""
-    size = os.path.getsize(fstream.name)
-    total = size // 65000 + 1
-    data = (FilePart(os.path.split(fstream.name)[1], size, i, total, fstream.read(65000)) for i in range(total))
-    return data
-
-
 class ClientProtocol:
     """
     客户端主控制类。
     """
 
-    def __init__(self, gener, path, que, tc, loop):
-        self.gener = gener
-        self.path = path
+    def __init__(self, fstream, que, tc, loop):
+        self.fstream = fstream
         self.que = que
         self.tc = tc
         self.loop = loop
-        self.now = next(gener)
+
+        self.path = fstream.name
+        size = os.path.getsize(self.path)
+        total = size // 65000 + 1
+        self.gener = (FilePart(os.path.split(self.path)[1], size, i, total, fstream.read(65000))
+                      for i in range(total))
+        self.now = next(self.gener)
         self.md5 = None
         self.transport = None
         self.on_con_lost = loop.create_future()
@@ -80,20 +77,22 @@ class ClientProtocol:
             if message['data'] == 'complete' and message['name'] == self.now.name:
                 # 文件传输完成后接收complete信息并清除定时器
                 self.time_counter.cancel()
-                print('\nTransmission complete.')
+                # print('\nTransmission complete.')
             elif message['data'] == 'MD5_passed':
                 # 向主进程传递MD5信息并释放锁
                 self.que.put({'type': 'info', 'name': message['name'], 'message': 'MD5_passed'})
                 msg = json.dumps({'type': 'message', 'data': 'terminated'}).encode()
                 self.transport.sendto(msg)
                 self.tc.release()
-                print('\nMD5 checking passed.')
+                # print('\nMD5 checking passed.')
+                self.fstream.close()
             elif message['data'] == 'MD5_failed':
                 self.que.put({'type': 'info', 'name': message['name'], 'message': 'MD5_failed'})
                 msg = json.dumps({'type': 'message', 'data': 'terminated'}).encode()
                 self.transport.sendto(msg)
                 self.tc.release()
-                print('\nMD5 checking failed.')
+                # print('\nMD5 checking failed.')
+                self.fstream.close()
             elif message['data'] == 'get' and message['part'] == self.now.part and message['name'] == self.now.name:
                 # 接收到成功回包则更新进度条消息并发送下一个包
                 self.time_counter.cancel()
@@ -102,7 +101,7 @@ class ClientProtocol:
                     self.file_sender()
                     self.now = next(self.gener)
                 except StopIteration:
-                    pass
+                    self.fstream.close()
 
     def error_received(self, exc):
         """异常处理函数，先忽略"""
@@ -110,7 +109,8 @@ class ClientProtocol:
 
     def connection_lost(self, exc):
         """连接断开时的行为：现在不会调用"""
-        pass
+        self.fstream.close()
+        self.on_con_lost.set_result(True)
 
     def file_sender(self):
         """数据报的发送行为"""
@@ -130,9 +130,9 @@ class ClientProtocol:
                 raw_msg = {'type': 'data', 'name': self.now.name, 'size': self.now.size, 'part': self.now.part,
                            'all': self.now.total}
                 fdata = json.dumps(raw_msg).encode() + b'---+++data+++---' + self.now.data
-        print('Sending file:{0} (Part {1}/{2})...'.format(self.now.name, self.now.part + 1, self.now.total), end='')
+        # print('Sending file:{0} (Part {1}/{2})...'.format(self.now.name, self.now.part + 1, self.now.total), end='')
         self.message_sender(fdata)
-        print('Done.', end='\n')
+        # print('Done.', end='\n')
 
     def message_sender(self, message):
         """
@@ -158,14 +158,14 @@ async def file_main(host, port, path, threading_controller, que):
     """
     threading_controller.acquire()
     loop = asyncio.get_running_loop()
-    with open(path, 'rb') as fstream:
-        transport, protocol = await loop.create_datagram_endpoint(
-            lambda: ClientProtocol(file_spliter(fstream), fstream.name, que, threading_controller, loop),
-            remote_addr=(host, port))
-        try:
-            await protocol.on_con_lost
-        finally:
-            transport.close()
+    fstream = open(path, 'rb')
+    transport, protocol = await loop.create_datagram_endpoint(
+        lambda: ClientProtocol(fstream, que, threading_controller, loop),
+        remote_addr=(host, port))
+    try:
+        await protocol.on_con_lost
+    finally:
+        transport.close()
 
 
 def file_thread(host, port, file, file_at_same_time, que):

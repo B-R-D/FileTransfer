@@ -1,5 +1,6 @@
 # coding:utf-8
 """UDP客户端GUI版"""
+# 改进：增加传输中取消功能
 import functools
 import os
 import queue
@@ -70,8 +71,10 @@ class ClientWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        # 初始化发送/接收文件列表：存放待发送文件的绝对路径
+        # 初始化发送端文件列表：待发送及待删除
         self.files = []
+        self.del_list = []
+        # 初始化接收端文件列表：已接收/成功/失败
         self.received_files = []
         self.succeed_files = []
         self.failed_files = []
@@ -394,7 +397,7 @@ class ClientWindow(QMainWindow):
             self.settings.endGroup()
             # 更改表格中文件行的状态
             for inst in self.files:
-                inst.status[0] = 'uploading'
+                inst.status = 'uploading'
                 inst.prog.setValue(0)
                 index = self.find_index_by_name(inst.name)
                 self.file_table.item(index, 4).setText('传输中')
@@ -420,23 +423,21 @@ class ClientWindow(QMainWindow):
         try:
             # 无阻塞读取信息队列
             message = self.client_que.get(block=False)
+            inst = self.find_instance_by_name(message['name'])
+            # index不直接计算考虑了简明视图的性能
             if message['type'] == 'info':
-                # 从传输设置中调用是否删除源文件
-                self.settings.beginGroup('ClientSetting')
-                setting_del_source = int(self.settings.value('del_source', False))
-                self.settings.endGroup()
+                index = self.find_index_by_name(message['name'])
                 # 信息队列：依据MD5检查结果设置文件状态
                 if message['message'] == 'MD5_passed':
-                    self.find_instance_by_name(message['name']).status[0] = 'complete'
-                    self.file_table.item(self.find_index_by_name(message['name']), 4).setText('传输完成')
-                    if setting_del_source:
-                        os.remove(self.find_instance_by_name(message['name']).path)
+                    inst.status = 'complete'
+                    self.file_table.item(index, 4).setText('传输完成')
+                    self.del_list.append(inst.path)
                 elif message['message'] == 'MD5_failed':
-                    self.find_instance_by_name(message['name']).status[0] = 'error'
-                    self.file_table.item(self.find_index_by_name(message['name']), 4).setText('传输错误')
-                self.file_table.item(self.find_index_by_name(message['name']), 2).setText('100 %')
+                    inst.status = 'error'
+                    self.file_table.item(index, 4).setText('传输错误')
+                self.file_table.item(index, 2).setText('100 %')
 
-                # 若无上传中的文件，关闭传输进程且提示完成结果
+                # 若无上传中的文件，关闭传输进程，清空上传列表且提示完成结果
                 if not self.find_instance_by_status('uploading'):
                     self.Lclient_status.setText(
                         '''传输完成：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/0 
@@ -446,13 +447,39 @@ class ClientWindow(QMainWindow):
                     self.file_sender.join()
                     self.file_sender.close()
                     self.timer.stop()
-                    if not self.find_instance_by_status('error'):
-                        msg_box = QMessageBox(self)
-                        msg_box.setWindowTitle('成功')
-                        msg_box.setIcon(QMessageBox.Information)
-                        msg_box.setText('传输成功完成！')
-                        msg_box.addButton('确定', QMessageBox.AcceptRole)
-                        msg_box.exec()
+                    self.files.remove(inst)
+                    # del_list不为空则考虑是否删除源文件
+                    if self.del_list:
+                        self.settings.beginGroup('ClientSetting')
+                        setting_del_source = int(self.settings.value('del_source', False))
+                        self.settings.endGroup()
+                        if setting_del_source:
+                            msg_box = QMessageBox(self)
+                            msg_box.setWindowTitle('成功')
+                            msg_box.setIcon(QMessageBox.Information)
+                            msg_box.setText('传输成功完成！\n点击确定删除源文件')
+                            msg_box.addButton('确定', QMessageBox.AcceptRole)
+                            msg_box.addButton('取消', QMessageBox.DestructiveRole)
+                            reply = msg_box.exec()
+                            if reply == QMessageBox.AcceptRole:
+                                for path in self.del_list:
+                                    try:
+                                        os.remove(path)
+                                    except Exception as e:
+                                        msg_box = QMessageBox(self)
+                                        msg_box.setWindowTitle('错误')
+                                        msg_box.setIcon(QMessageBox.Critical)
+                                        msg_box.setInformativeText('无法删除\n{0}'.format(path))
+                                        msg_box.setText(repr(e))
+                                        msg_box.addButton('确定', QMessageBox.AcceptRole)
+                                        msg_box.exec()
+                        else:
+                            msg_box = QMessageBox(self)
+                            msg_box.setWindowTitle('成功')
+                            msg_box.setIcon(QMessageBox.Information)
+                            msg_box.setText('传输成功完成！')
+                            msg_box.addButton('确定', QMessageBox.AcceptRole)
+                            msg_box.exec()
                     else:
                         msg_box = QMessageBox(self)
                         msg_box.setWindowTitle('信息')
@@ -467,15 +494,12 @@ class ClientWindow(QMainWindow):
                             len(self.find_instance_by_status('complete')), len(self.find_instance_by_status('error')),
                             len(self.find_instance_by_status('uploading'))))
             elif message['type'] == 'prog':
-                # 信息队列：更新进度条进度
-                for inst in self.files:
-                    if inst.name == message['name']:
-                        inst.prog.setValue(message['part'] + 1)
-                        # 详细视图时还要更新进度百分比
-                        if self.setting_detail_view:
-                            file_prog = message['part'] / inst.prog.maximum() * 100
-                            index = self.find_index_by_name(inst.name)
-                            self.file_table.item(index, 2).setText('{0:.2f} %'.format(file_prog))
+                inst.prog.setValue(message['part'] + 1)
+                # 详细视图时还要更新进度百分比
+                if self.setting_detail_view:
+                    index = self.find_index_by_name(message['name'])
+                    file_prog = message['part'] / inst.prog.maximum() * 100
+                    self.file_table.item(index, 2).setText('{0:.2f} %'.format(file_prog))
         except queue.Empty:
             # 忽略空队列异常
             pass

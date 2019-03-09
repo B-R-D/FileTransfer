@@ -45,7 +45,8 @@ class ServerProtocol:
                     self.que.put({'type': 'server_info', 'message': 'started', 'name': info['name']})
                     self.message_sender({'type': 'message', 'data': 'get', 'name': info['name'], 'part': 0}, addr)
             elif info['data'] == 'terminated':
-                print('\nConnection terminated successfully.\n')
+                pass
+                # print('\nConnection terminated successfully.\n')
         elif info['type'] == 'data':
             data = data.split(b'---+++data+++---')[1]
             if info['name'] in self.time_counter and info['part'] == len(self.time_counter[info['name']]) - 1:
@@ -60,21 +61,22 @@ class ServerProtocol:
                     checker.start()
                     msg = json.dumps({'type': 'message', 'data': 'complete', 'name': info['name']}).encode()
                     self.transport.sendto(msg, addr)
-                    print('\nFile: {0}({1}) transmission complete.\n'
-                          .format(info['name'], display_file_length(info['size'])))
+                    # print('\nFile: {0}({1}) transmission complete.\n'
+                    #      .format(info['name'], display_file_length(info['size'])))
         elif info['type'] == 'chat':
             self.que.put({'type': 'chat', 'status': 'received', 'message': info['message'], 'from': addr})
             msg = json.dumps({'type': 'chat', 'message': info['message'], 'data': 'get'}).encode()
             self.transport.sendto(msg, addr)
 
     def connection_lost(self):
-        print('Server terminated.')
+        pass
+        # print('Server terminated.')
 
     def write_data(self, info, data, addr):
         """写入本地数据并调用get消息回发函数"""
         with open(os.path.join(self.save_dir, info['name']), 'ab') as filedata:
             filedata.write(data)
-        print('{0}(part {1}/{2}) complete.'.format(info['name'], info['part'] + 1, info['all']), end='\n')
+        # print('{0}(part {1}/{2}) complete.'.format(info['name'], info['part'] + 1, info['all']), end='\n')
         # 非末块则有回送操作(这里是用插入新值封住了接收重复块)
         if not len(self.time_counter[info['name']]) - 1 == info['all']:
             message = {'type': 'message', 'data': 'get', 'name': info['name'], 'part': info['part'] + 1}
@@ -96,12 +98,12 @@ class ServerProtocol:
             msg = json.dumps({'type': 'message', 'name': info['name'], 'data': 'MD5_passed'}).encode()
             self.transport.sendto(msg, addr)
             self.que.put({'type': 'server_info', 'message': 'MD5_passed', 'name': info['name']})
-            print('\n', info['name'], 'MD5 checking passed.\n')
+            # print('\n', info['name'], 'MD5 checking passed.\n')
         else:
             msg = json.dumps({'type': 'message', 'name': info['name'], 'data': 'MD5_failed'}).encode()
             self.transport.sendto(msg, addr)
             self.que.put({'type': 'server_info', 'message': 'MD5_failed', 'name': info['name']})
-            print('\n', info['name'], 'MD5 checking failed.\n')
+            # print('\n', info['name'], 'MD5 checking failed.\n')
 
 
 async def main(incoming_ip, bind_port, save_dir, que):
@@ -112,7 +114,7 @@ async def main(incoming_ip, bind_port, save_dir, que):
             lambda: ServerProtocol(save_dir, que, loop),
             local_addr=(incoming_ip, bind_port))
         que.put({'type': 'server_info', 'message': 'ready'})
-        print('Waiting for incoming transmission...')
+        # print('Waiting for incoming transmission...')
         await asyncio.sleep(99999999)
     except Exception as e:
         que.put({'type': 'server_info', 'message': 'error', 'detail': repr(e)})
