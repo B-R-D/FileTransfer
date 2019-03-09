@@ -178,3 +178,58 @@ def file_thread(host, port, file, file_at_same_time, que):
                                           args=(file_main(host, port, path, threading_controller, que),))
         thread_asyncio.start()
     thread_asyncio.join()
+
+
+class AbortProtocol:
+    """取消消息控制类"""
+    def __init__(self, loop, que):
+        self.loop = loop
+        self.que = que
+        self.transport = None
+        self.on_con_lost = loop.create_future()
+        self.counter = 0
+        self.time_counter = self.loop.call_later(3, self.on_con_lost.set_result, True)
+
+    def connection_made(self, transport):
+        self.transport = transport
+        print('建立连接')
+        message = {'type': 'message', 'data': 'aborted'}
+        self.message_sender(json.dumps(message).encode())
+
+    def datagram_received(self, message, addr):
+        message = json.loads(message)
+        print('收到', message)
+        if message['type'] == 'message' and message['data'] == 'aborted':
+            self.que.put({'type': 'abort_info', 'message': 'aborted'})
+            self.transport.close()
+
+    def connection_lost(self, exc):
+        self.on_con_lost.set_result(True)
+
+    def message_sender(self, message):
+        """
+        自带随机秒重发机制的消息回发(0.2s)
+        """
+        print('发送中断消息')
+        self.time_counter.cancel()
+        if self.counter >= 10:
+            self.transport.close()
+        self.transport.sendto(message)
+        self.counter += 1
+        self.time_counter = self.loop.call_later(0.2, self.message_sender, message)
+
+
+async def abort_main(host, port, que):
+    """发送取消传输消息专用"""
+    loop = asyncio.get_running_loop()
+    transport, protocol = await loop.create_datagram_endpoint(
+        lambda: AbortProtocol(loop, que),
+        remote_addr=(host, port))
+    try:
+        await protocol.on_con_lost
+    finally:
+        transport.close()
+
+
+def abort_sender(host, port, que):
+    asyncio.run(abort_main(host, port, que))

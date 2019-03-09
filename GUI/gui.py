@@ -1,13 +1,13 @@
 # coding:utf-8
 """UDP客户端GUI版"""
-# 改进：增加传输中取消功能
+# 改进：增加传输中和程序退出前提示取消功能
 import functools
 import os
 import queue
 import sys
 from multiprocessing import Process, Queue
 
-from PyQt5.QtCore import Qt, QCoreApplication, QSettings, QTimer
+from PyQt5.QtCore import Qt, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication, QTextCursor
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QStackedLayout, QMainWindow, QApplication
 from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QAction, QMessageBox, QProgressBar, QFrame, QSplitter
@@ -85,16 +85,16 @@ class ClientWindow(QMainWindow):
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
         # 初始化字体
         self.setFont(QFont('Arial', 10))
+        # 屏幕分辨率信息
+        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
+        self.reso_height = self.resolution.height()
+        self.reso_width = self.resolution.width()
         self.init_ui()
 
     def init_ui(self):
-        # 屏幕分辨率信息
-        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.height = self.resolution.height()
-        self.width = self.resolution.width()
         # 恢复上次关闭时的窗口尺寸
         self.settings.beginGroup('Misc')
-        setting_window_size = self.settings.value('window_size', (self.width / 6.4, self.height / 2.7))
+        setting_window_size = self.settings.value('window_size', (self.reso_height / 6.4, self.reso_width / 2.7))
         self.settings.endGroup()
         self.resize(setting_window_size[0], setting_window_size[1])
         # 在屏幕中央(不含开始菜单栏)打开窗口
@@ -104,7 +104,7 @@ class ClientWindow(QMainWindow):
         self.sender_frame = QFrame()
         self.chat_frame = QFrame()
         self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setHandleWidth(self.width / 384)
+        self.splitter.setHandleWidth(self.reso_width / 384)
         self.splitter.splitterMoved.connect(self.resizeEvent)
         self.splitter.addWidget(self.sender_frame)
         self.splitter.addWidget(self.chat_frame)
@@ -115,17 +115,22 @@ class ClientWindow(QMainWindow):
         # 定义菜单栏：文件，设置
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu('文件(&F)')
-        act_choose = QAction('选择文件(&C)', self)
-        act_send = QAction('发送(&S)', self)
-        act_exit = QAction('退出(&Q)', self)
+        self.act_choose = QAction('选择文件(&C)', self)
+        self.act_send = QAction('发送(&S)', self)
+        self.act_stop_send = QAction('中止传输(&E)', self)
+        self.act_exit = QAction('退出(&Q)', self)
 
-        file_menu.addAction(act_choose)
-        file_menu.addAction(act_send)
+        file_menu.addAction(self.act_choose)
+        file_menu.addAction(self.act_send)
+        file_menu.addAction(self.act_stop_send)
         file_menu.addSeparator()
-        file_menu.addAction(act_exit)
-        act_choose.triggered.connect(self.file_dialog)
-        act_send.triggered.connect(self.file_checker)
-        act_exit.triggered.connect(self.safe_close)
+        file_menu.addAction(self.act_exit)
+        self.act_choose.triggered.connect(self.file_dialog)
+        self.act_send.setDisabled(True)
+        self.act_send.triggered.connect(self.file_checker)
+        self.act_stop_send.setDisabled(True)
+        self.act_stop_send.triggered.connect(self.abort_trans)
+        self.act_exit.triggered.connect(self.close)
 
         setting_menu = menu_bar.addMenu('设置(&S)')
         act_client = QAction('发送端设置(&C)', self)
@@ -156,17 +161,18 @@ class ClientWindow(QMainWindow):
         self.file_table = QTableWidget()
         self.file_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.file_table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.file_table.verticalScrollBar().setStyleSheet('QScrollBar{{width:{}px;}}'.format(self.width / 192))
+        self.file_table.verticalScrollBar().setStyleSheet('QScrollBar{{width:{}px;}}'.format(self.reso_width / 192))
         self.file_table.verticalScrollBar().setContextMenuPolicy(Qt.NoContextMenu)
         self.file_table.verticalHeader().setSectionsClickable(False)
         self.file_table.horizontalHeader().setSectionsClickable(False)
         self.file_table.hide()
         self.Bfile_sender = QPushButton('发送', self)
+        self.Bfile_sender.setDisabled(True)
         self.Bfile_sender.clicked.connect(self.file_checker)
 
         # 定义传输区域垂直布局
         self.vbox = QVBoxLayout()
-        self.vbox.setSpacing(self.height / 70)
+        self.vbox.setSpacing(self.reso_height / 70)
         self.vbox.addWidget(self.Bselector)
         self.vbox.addWidget(self.file_table)
         self.vbox.addWidget(self.Lfile_empty)
@@ -187,7 +193,7 @@ class ClientWindow(QMainWindow):
 
         # 定义消息区域垂直布局
         self.chat_vbox = QVBoxLayout()
-        self.chat_vbox.setSpacing(self.height / 70)
+        self.chat_vbox.setSpacing(self.reso_height / 70)
         self.chat_vbox.addWidget(self.Emessage_area)
         self.chat_vbox.addWidget(self.Emessage_writer)
         self.chat_hbox = QHBoxLayout()
@@ -202,9 +208,9 @@ class ClientWindow(QMainWindow):
         self.setting_detail_view = int(self.settings.value('detail_view', False))
         self.settings.endGroup()
         if not self.setting_detail_view:
-            self.sender_frame.setMinimumWidth(self.width / 7.68)
+            self.sender_frame.setMinimumWidth(self.reso_width / 7.68)
         else:
-            self.sender_frame.setMinimumWidth(self.width / 6)
+            self.sender_frame.setMinimumWidth(self.reso_width / 6)
         self.ui_setting_checker()
         self.settings.beginGroup('Misc')
         self.setting_frame_width = self.settings.value('frame_width', (self.geometry().width(), 0))
@@ -314,7 +320,7 @@ class ClientWindow(QMainWindow):
         header_height = self.file_table.horizontalHeader().height()
         if row_height + header_height >= self.file_table.height():
             for inst in self.files:
-                changed_text = self.shorten_filename(inst.name, self.file_table.columnWidth(1) - self.width / 192)
+                changed_text = self.shorten_filename(inst.name, self.file_table.columnWidth(1) - self.reso_width / 192)
                 inst.label.setText(changed_text)
         else:
             for inst in self.files:
@@ -342,9 +348,9 @@ class ClientWindow(QMainWindow):
         """根据给定的宽度截断文件名并添加...，返回截断后的文件名"""
         # 从第n个字符开始计算长度并添加...
         metrics = QFontMetrics(self.font())
-        if metrics.width(name) > width - self.width / 128:
+        if metrics.width(name) > width - self.reso_width / 128:
             for i in range(4, len(name)):
-                if metrics.width(name[:i]) > width - self.width / 128:
+                if metrics.width(name[:i]) > width - self.reso_width / 128:
                     return name[:i] + '...'
         return name
 
@@ -356,6 +362,8 @@ class ClientWindow(QMainWindow):
         if not self.files:
             self.file_table.hide()
             self.Lfile_empty.show()
+            self.act_send.setDisabled(True)
+            self.Bfile_sender.setDisabled(True)
 
     def chat_checker(self):
         if self.Emessage_writer.text():
@@ -381,42 +389,69 @@ class ClientWindow(QMainWindow):
 
     def file_checker(self):
         """文件列表检查及客户端传输进程开启"""
-        if not self.files:
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle('错误')
-            msg_box.setIcon(QMessageBox.Warning)
-            msg_box.setText('未选择文件！')
-            msg_box.addButton('确定', QMessageBox.AcceptRole)
-            msg_box.exec()
-        else:
-            # 从传输设置中调用同时传输的文件数及网络设定
-            self.settings.beginGroup('ClientSetting')
-            setting_file_at_same_time = int(self.settings.value('file_at_same_time', 2))
-            setting_host = self.settings.value('host', '127.0.0.1')
-            setting_port = int(self.settings.value('server_port', 12345))
-            self.settings.endGroup()
-            # 更改表格中文件行的状态
-            for inst in self.files:
-                inst.status = 'uploading'
-                inst.prog.setValue(0)
-                index = self.find_index_by_name(inst.name)
-                self.file_table.item(index, 4).setText('传输中')
-            # 构建绝对路径列表并启动传输子进程，无法启动的异常反映在状态栏
-            path_list = [inst.path for inst in self.files]
-            try:
-                self.file_sender = Process(target=trans_client.file_thread, args=(
-                    setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
-                self.file_sender.start()
-                self.Lclient_status.setText(
-                    '''传输中：<font color=green>0<font color=black>/<font color=red>0<font color=black>/{0} 
-                    (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'''.format(
-                        len(self.find_instance_by_status('uploading'))))
-            except Exception as e:
-                self.Lclient_status.setText(repr(e))
-            # 启动进度条更新
-            self.timer = QTimer()
-            self.timer.timeout.connect(self.update_prog)
-            self.timer.start(5)
+        self.ui_sending()
+        # 从传输设置中调用同时传输的文件数及网络设定
+        self.settings.beginGroup('ClientSetting')
+        setting_file_at_same_time = int(self.settings.value('file_at_same_time', 2))
+        setting_host = self.settings.value('host', '127.0.0.1')
+        setting_port = int(self.settings.value('server_port', 12345))
+        self.settings.endGroup()
+        # 更改表格中文件行的状态
+        for inst in self.files:
+            inst.status = 'uploading'
+            inst.prog.setValue(0)
+            index = self.find_index_by_name(inst.name)
+            self.file_table.item(index, 4).setText('传输中')
+        # 构建绝对路径列表并启动传输子进程，无法启动的异常反映在状态栏
+        path_list = [inst.path for inst in self.files]
+        try:
+            self.file_sender = Process(target=trans_client.file_thread, args=(
+                setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
+            self.file_sender.start()
+            self.Lclient_status.setText(
+                '''传输中：<font color=green>0<font color=black>/<font color=red>0<font color=black>/{0} 
+                (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'''.format(
+                    len(self.find_instance_by_status('uploading'))))
+        except Exception as e:
+            self.Lclient_status.setText(repr(e))
+        # 启动进度条更新
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_prog)
+        self.timer.start(5)
+
+    def ui_sending(self):
+        """传输前UI处理函数"""
+        self.act_choose.setDisabled(True)
+        self.act_send.setDisabled(True)
+        self.act_stop_send.setDisabled(False)
+        self.Bselector.setDisabled(True)
+        self.Bfile_sender.setText('中止传输')
+        self.Bfile_sender.clicked.disconnect(self.file_checker)
+        self.Bfile_sender.clicked.connect(self.abort_trans)
+        # 删除按钮不可用
+        for inst in self.files:
+            inst.button.setDisabled(True)
+
+    def ui_pending(self):
+        self.act_choose.setDisabled(False)
+        self.act_stop_send.setDisabled(True)
+        self.Bselector.setDisabled(False)
+        self.Bfile_sender.setText('发送')
+        self.Bfile_sender.clicked.disconnect(self.abort_trans)
+        self.Bfile_sender.clicked.connect(self.file_checker)
+        # 删除按钮可用
+        for inst in self.files:
+            inst.button.setDisabled(False)
+
+    def abort_trans(self):
+        """中断传输：中断及删除中间变量后发送取消消息"""
+        self.safe_close()
+        # 从传输设置中调用网络设定
+        self.settings.beginGroup('ClientSetting')
+        setting_host = self.settings.value('host', '127.0.0.1')
+        setting_port = int(self.settings.value('server_port', 12345))
+        self.settings.endGroup()
+        trans_client.abort_sender(setting_host, setting_port, self.server_que)
 
     def update_prog(self):
         """传输过程管理及进度条更新"""
@@ -447,7 +482,6 @@ class ClientWindow(QMainWindow):
                     self.file_sender.join()
                     self.file_sender.close()
                     self.timer.stop()
-                    self.files.remove(inst)
                     # del_list不为空则考虑是否删除源文件
                     if self.del_list:
                         self.settings.beginGroup('ClientSetting')
@@ -462,6 +496,7 @@ class ClientWindow(QMainWindow):
                             msg_box.addButton('取消', QMessageBox.DestructiveRole)
                             reply = msg_box.exec()
                             if reply == QMessageBox.AcceptRole:
+                                self.remove_all()
                                 for path in self.del_list:
                                     try:
                                         os.remove(path)
@@ -487,6 +522,8 @@ class ClientWindow(QMainWindow):
                         msg_box.setText('传输完成，但有文件传输出错！')
                         msg_box.addButton('确定', QMessageBox.AcceptRole)
                         msg_box.exec()
+                    # 恢复界面UI
+                    self.ui_pending()
                 else:
                     self.Lclient_status.setText(
                         '''传输中：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/{2} 
@@ -546,6 +583,9 @@ class ClientWindow(QMainWindow):
                     self.Emessage_area.append(
                         '{0}:{1}：\n    {2}'.format(message['from'][0], message['from'][1], message['message']))
                     self.Lserver_status.setText('收到来自{0}:{1}的聊天消息'.format(message['from'][0], message['from'][1]))
+            elif message['type'] == 'abort_info':
+                if message['message'] == 'aborted':
+                    pass
         except queue.Empty:
             pass
 
@@ -564,9 +604,34 @@ class ClientWindow(QMainWindow):
             self.chat_frame.hide()
 
     def safe_close(self):
-        """程序的关闭行为，触发closeEvent事件"""
-        QCoreApplication.instance().quit()
-        self.close()
+        """结束子进程及计时器"""
+        try:
+            # 关闭服务器，进度计时器和传输子进程
+            self.server_timer.stop()
+            del self.server_timer
+            self.server_starter.terminate()
+            self.server_starter.join()
+            self.server_starter.close()
+            self.timer.stop()
+            del self.timer
+            self.file_sender.terminate()
+            self.file_sender.join()
+            self.file_sender.close()
+        except ValueError:
+            # 忽略传输子进程已关闭时的异常
+            pass
+        except AttributeError:
+            # 忽略还未声明变量时的异常
+            pass
+        try:
+            # 关闭聊天子进程
+            self.chat_sender.terminate()
+            self.chat_sender.join()
+            self.chat_sender.close()
+        except ValueError:
+            pass
+        except AttributeError:
+            pass
 
     def find_instance_by_name(self, name):
         """按文件名在文件列表中查找实例，没有返回None"""
@@ -611,6 +676,9 @@ class ClientWindow(QMainWindow):
                 self.simple_viewer(add_files)
             else:
                 self.detail_viewer(add_files)
+            # 改变发送UI
+            self.Bfile_sender.setDisabled(False)
+            self.act_send.setDisabled(False)
             # 记录历史路径
             self.settings.beginGroup('Misc')
             self.settings.setValue('path_history', os.path.split(fname[0][-1])[0])
@@ -637,44 +705,40 @@ class ClientWindow(QMainWindow):
         self.ui_setting.show()
 
     def closeEvent(self, event):
-        """程序关闭时触发"""
-        # 记录关闭时的窗口尺寸
-        self.settings.beginGroup('Misc')
-        self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
-        self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
-        self.settings.endGroup()
-        try:
-            # 关闭服务器，进度计时器和传输子进程
-            self.server_timer.stop()
-            del self.server_timer
-            self.server_starter.terminate()
-            self.server_starter.join()
-            self.server_starter.close()
-            self.timer.stop()
-            del self.timer
-            self.file_sender.terminate()
-            self.file_sender.join()
-            self.file_sender.close()
-        except ValueError:
-            # 忽略传输子进程已关闭时的异常
-            pass
-        except AttributeError:
-            # 忽略还未声明变量时的异常
-            pass
-        try:
-            # 关闭聊天子进程
-            self.chat_sender.terminate()
-            self.chat_sender.join()
-            self.chat_sender.close()
-        except ValueError:
-            pass
-        except AttributeError:
-            pass
+        """关闭前检查是否有传输中的文件"""
+        print('进关闭事件了')
+        if self.find_instance_by_status('uploading'):
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle('警告')
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setText('有正在传输的文件，是否中断传输并退出？')
+            msg_box.addButton('确定', QMessageBox.AcceptRole)
+            msg_box.addButton('取消', QMessageBox.DestructiveRole)
+            reply = msg_box.exec()
+            if reply == QMessageBox.AcceptRole:
+                # 记录关闭时的窗口尺寸
+                self.settings.beginGroup('Misc')
+                self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
+                self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
+                self.settings.endGroup()
+                self.abort_trans()
+                self.close()
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            # 记录关闭时的窗口尺寸
+            self.settings.beginGroup('Misc')
+            self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
+            self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
+            self.settings.endGroup()
+            self.safe_close()
+            self.close()
 
     def keyPressEvent(self, k):
         """按ESC时触发的关闭行为"""
         if k.key() == Qt.Key_Escape:
-            self.safe_close()
+            self.close()
 
     def resizeEvent(self, event):
         """调整窗口尺寸时触发"""

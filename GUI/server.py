@@ -47,6 +47,14 @@ class ServerProtocol:
             elif info['data'] == 'terminated':
                 pass
                 # print('\nConnection terminated successfully.\n')
+            elif info['data'] == 'abort':
+                # 取消传输
+                for name in self.time_counter:
+                    name[-1].cancel()
+                self.time_counter = {}
+                message = {'type': 'message', 'data': 'aborted'}
+                self.transport.sendto(json.dumps(message).encode(), addr)
+                print('\nTransmission aborted by client.\n')
         elif info['type'] == 'data':
             data = data.split(b'---+++data+++---')[1]
             if info['name'] in self.time_counter and info['part'] == len(self.time_counter[info['name']]) - 1:
