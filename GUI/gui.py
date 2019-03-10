@@ -78,9 +78,10 @@ class ClientWindow(QMainWindow):
         self.received_files = []
         self.succeed_files = []
         self.failed_files = []
-        # 初始化进程间通信队列：发送端和接收端
+        # 初始化进程间通信队列和传输中断标志
         self.client_que = Queue()
         self.server_que = Queue()
+        self.aborted = False
         # 初始化设置文件
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
         # 初始化字体
@@ -390,6 +391,7 @@ class ClientWindow(QMainWindow):
     def file_checker(self):
         """文件列表检查及客户端传输进程开启"""
         self.ui_sending()
+        self.aborted = False
         # 从传输设置中调用同时传输的文件数及网络设定
         self.settings.beginGroup('ClientSetting')
         setting_file_at_same_time = int(self.settings.value('file_at_same_time', 2))
@@ -415,9 +417,9 @@ class ClientWindow(QMainWindow):
         except Exception as e:
             self.Lclient_status.setText(repr(e))
         # 启动进度条更新
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_prog)
-        self.timer.start(5)
+        self.prog_timer = QTimer()
+        self.prog_timer.timeout.connect(self.update_prog)
+        self.prog_timer.start(5)
 
     def ui_sending(self):
         """传输前UI处理函数"""
@@ -444,14 +446,29 @@ class ClientWindow(QMainWindow):
             inst.button.setDisabled(False)
 
     def abort_trans(self):
-        """中断传输：中断及删除中间变量后发送取消消息"""
-        self.safe_close()
+        """中断传输后发送取消消息"""
+        try:
+            print('结束file_sender')
+            self.file_sender.terminate()
+            self.file_sender.join()
+            self.file_sender.close()
+            del self.file_sender
+        except ValueError:
+            pass
+        except AttributeError:
+            pass
         # 从传输设置中调用网络设定
         self.settings.beginGroup('ClientSetting')
         setting_host = self.settings.value('host', '127.0.0.1')
         setting_port = int(self.settings.value('server_port', 12345))
         self.settings.endGroup()
-        trans_client.abort_sender(setting_host, setting_port, self.server_que)
+        print('开启子进程abort_sender')
+        self.abort_sender = Process(target=trans_client.file_thread,
+                                    args=(setting_host, setting_port, '', None, self.client_que))
+        self.abort_sender.start()
+        self.abort_sender.join()
+        self.abort_sender.close()
+        del self.abort_sender
 
     def update_prog(self):
         """传输过程管理及进度条更新"""
@@ -466,11 +483,17 @@ class ClientWindow(QMainWindow):
                 if message['message'] == 'MD5_passed':
                     inst.status = 'complete'
                     self.file_table.item(index, 4).setText('传输完成')
+                    self.file_table.item(index, 2).setText('100 %')
                     self.del_list.append(inst.path)
                 elif message['message'] == 'MD5_failed':
                     inst.status = 'error'
                     self.file_table.item(index, 4).setText('传输错误')
-                self.file_table.item(index, 2).setText('100 %')
+                    self.file_table.item(index, 2).setText('100 %')
+                elif message['message'] == 'aborted':
+                    # 需要设置中断标志位供closeEvent检查
+                    print('服务端已中断', message)
+                    self.aborted = True
+                    self.ui_pending()
 
                 # 若无上传中的文件，关闭传输进程，清空上传列表且提示完成结果
                 if not self.find_instance_by_status('uploading'):
@@ -481,7 +504,7 @@ class ClientWindow(QMainWindow):
                     self.file_sender.terminate()
                     self.file_sender.join()
                     self.file_sender.close()
-                    self.timer.stop()
+                    self.prog_timer.stop()
                     # del_list不为空则考虑是否删除源文件
                     if self.del_list:
                         self.settings.beginGroup('ClientSetting')
@@ -583,9 +606,6 @@ class ClientWindow(QMainWindow):
                     self.Emessage_area.append(
                         '{0}:{1}：\n    {2}'.format(message['from'][0], message['from'][1], message['message']))
                     self.Lserver_status.setText('收到来自{0}:{1}的聊天消息'.format(message['from'][0], message['from'][1]))
-            elif message['type'] == 'abort_info':
-                if message['message'] == 'aborted':
-                    pass
         except queue.Empty:
             pass
 
@@ -605,6 +625,7 @@ class ClientWindow(QMainWindow):
 
     def safe_close(self):
         """结束子进程及计时器"""
+        print('进入safe_close')
         try:
             # 关闭服务器，进度计时器和传输子进程
             self.server_timer.stop()
@@ -612,8 +633,8 @@ class ClientWindow(QMainWindow):
             self.server_starter.terminate()
             self.server_starter.join()
             self.server_starter.close()
-            self.timer.stop()
-            del self.timer
+            self.prog_timer.stop()
+            del self.prog_timer
             self.file_sender.terminate()
             self.file_sender.join()
             self.file_sender.close()
@@ -711,19 +732,23 @@ class ClientWindow(QMainWindow):
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle('警告')
             msg_box.setIcon(QMessageBox.Warning)
-            msg_box.setText('有正在传输的文件，是否中断传输并退出？')
+            msg_box.setText('文件传输中，是否中断并退出？')
             msg_box.addButton('确定', QMessageBox.AcceptRole)
             msg_box.addButton('取消', QMessageBox.DestructiveRole)
             reply = msg_box.exec()
             if reply == QMessageBox.AcceptRole:
+                self.abort_trans()
                 # 记录关闭时的窗口尺寸
                 self.settings.beginGroup('Misc')
                 self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
                 self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
                 self.settings.endGroup()
-                self.abort_trans()
-                self.close()
-                event.accept()
+                self.settings.sync()
+                print('等待服务端中断信号')
+                while self.aborted:
+                    print('中断成功，退出程序')
+                    self.safe_close()
+                    event.accept()
             else:
                 event.ignore()
         else:
@@ -732,8 +757,9 @@ class ClientWindow(QMainWindow):
             self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
             self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
             self.settings.endGroup()
+            self.settings.sync()
             self.safe_close()
-            self.close()
+            event.accept()
 
     def keyPressEvent(self, k):
         """按ESC时触发的关闭行为"""

@@ -45,16 +45,17 @@ class ClientProtocol:
         self.tc = tc
         self.loop = loop
 
-        self.path = fstream.name
-        size = os.path.getsize(self.path)
-        total = size // 65000 + 1
-        self.gener = (FilePart(os.path.split(self.path)[1], size, i, total, fstream.read(65000))
-                      for i in range(total))
-        self.now = next(self.gener)
-        self.md5 = None
         self.transport = None
         self.on_con_lost = loop.create_future()
         self.time_counter = self.loop.call_later(10, self.on_con_lost.set_result, True)
+        if fstream and tc:
+            self.path = fstream.name
+            size = os.path.getsize(self.path)
+            total = size // 65000 + 1
+            self.gener = (FilePart(os.path.split(self.path)[1], size, i, total, fstream.read(65000))
+                          for i in range(total))
+            self.now = next(self.gener)
+            self.md5 = None
 
     def connection_made(self, transport):
         """
@@ -62,17 +63,21 @@ class ClientProtocol:
         发送带文件名的建立连接包并开始计算MD5值
         """
         self.transport = transport
-        msg = json.dumps({'type': 'message', 'data': 'established', 'name': os.path.split(self.path)[1]}).encode()
+        if self.fstream and self.tc:
+            msg = json.dumps({'type': 'message', 'data': 'established', 'name': os.path.split(self.path)[1]}).encode()
+            self.thread_md5 = threading.Thread(target=self.md5_gener)
+            self.thread_md5.start()
+        else:
+            msg = json.dumps({'type': 'message', 'data': 'aborted'}).encode()
+            print('发送', msg)
         self.message_sender(msg)
-        self.thread_md5 = threading.Thread(target=self.md5_gener)
-        self.thread_md5.start()
 
-    def datagram_received(self, message, addr):
+    def datagram_received(self, data, addr):
         """
         接收数据报时的行为：
         依据传递的信息执行响应。
         """
-        message = json.loads(message)
+        message = json.loads(data)
         if message['type'] == 'message':
             if message['data'] == 'complete' and message['name'] == self.now.name:
                 # 文件传输完成后接收complete信息并清除定时器
@@ -102,6 +107,10 @@ class ClientProtocol:
                     self.now = next(self.gener)
                 except StopIteration:
                     self.fstream.close()
+            elif message['data'] == 'aborted':
+                print('收到中断回包', message)
+                self.que.put({'type': 'info', 'message': 'aborted'})
+                self.transport.close()
 
     def error_received(self, exc):
         """异常处理函数，先忽略"""
@@ -156,12 +165,17 @@ async def file_main(host, port, path, threading_controller, que):
     """
     传输控制类实例构造函数，传输端点在此关闭。
     """
-    threading_controller.acquire()
     loop = asyncio.get_running_loop()
-    fstream = open(path, 'rb')
-    transport, protocol = await loop.create_datagram_endpoint(
-        lambda: ClientProtocol(fstream, que, threading_controller, loop),
-        remote_addr=(host, port))
+    if path and threading_controller:
+        threading_controller.acquire()
+        fstream = open(path, 'rb')
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: ClientProtocol(fstream, que, threading_controller, loop),
+            remote_addr=(host, port))
+    else:
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: ClientProtocol(None, que, None, loop),
+            remote_addr=(host, port))
     try:
         await protocol.on_con_lost
     finally:
@@ -172,64 +186,14 @@ def file_thread(host, port, file, file_at_same_time, que):
     """
     传输线程启动函数。
     """
-    threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
-    for path in file:
+    if file and file_at_same_time:
+        threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
+        for path in file:
+            thread_asyncio = threading.Thread(target=asyncio.run,
+                                              args=(file_main(host, port, path, threading_controller, que),))
+            thread_asyncio.start()
+    else:
         thread_asyncio = threading.Thread(target=asyncio.run,
-                                          args=(file_main(host, port, path, threading_controller, que),))
+                                          args=(file_main(host, port, [], None, que),))
         thread_asyncio.start()
     thread_asyncio.join()
-
-
-class AbortProtocol:
-    """取消消息控制类"""
-    def __init__(self, loop, que):
-        self.loop = loop
-        self.que = que
-        self.transport = None
-        self.on_con_lost = loop.create_future()
-        self.counter = 0
-        self.time_counter = self.loop.call_later(3, self.on_con_lost.set_result, True)
-
-    def connection_made(self, transport):
-        self.transport = transport
-        print('建立连接')
-        message = {'type': 'message', 'data': 'aborted'}
-        self.message_sender(json.dumps(message).encode())
-
-    def datagram_received(self, message, addr):
-        message = json.loads(message)
-        print('收到', message)
-        if message['type'] == 'message' and message['data'] == 'aborted':
-            self.que.put({'type': 'abort_info', 'message': 'aborted'})
-            self.transport.close()
-
-    def connection_lost(self, exc):
-        self.on_con_lost.set_result(True)
-
-    def message_sender(self, message):
-        """
-        自带随机秒重发机制的消息回发(0.2s)
-        """
-        print('发送中断消息')
-        self.time_counter.cancel()
-        if self.counter >= 10:
-            self.transport.close()
-        self.transport.sendto(message)
-        self.counter += 1
-        self.time_counter = self.loop.call_later(0.2, self.message_sender, message)
-
-
-async def abort_main(host, port, que):
-    """发送取消传输消息专用"""
-    loop = asyncio.get_running_loop()
-    transport, protocol = await loop.create_datagram_endpoint(
-        lambda: AbortProtocol(loop, que),
-        remote_addr=(host, port))
-    try:
-        await protocol.on_con_lost
-    finally:
-        transport.close()
-
-
-def abort_sender(host, port, que):
-    asyncio.run(abort_main(host, port, que))
