@@ -68,8 +68,7 @@ class ClientProtocol:
             self.thread_md5 = threading.Thread(target=self.md5_gener)
             self.thread_md5.start()
         else:
-            msg = json.dumps({'type': 'message', 'data': 'aborted'}).encode()
-            print('发送', msg)
+            msg = json.dumps({'type': 'message', 'data': 'abort'}).encode()
         self.message_sender(msg)
 
     def datagram_received(self, data, addr):
@@ -109,7 +108,7 @@ class ClientProtocol:
                     self.fstream.close()
             elif message['data'] == 'aborted':
                 print('收到中断回包', message)
-                self.que.put({'type': 'info', 'message': 'aborted'})
+                self.que.put({'type': 'info', 'message': 'aborted', 'name': 'None'})
                 self.transport.close()
 
     def error_received(self, exc):
@@ -117,8 +116,9 @@ class ClientProtocol:
         pass
 
     def connection_lost(self, exc):
-        """连接断开时的行为：现在不会调用"""
-        self.fstream.close()
+        """连接断开时的行为"""
+        if self.fstream:
+            self.fstream.close()
         self.on_con_lost.set_result(True)
 
     def file_sender(self):

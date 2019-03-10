@@ -231,7 +231,7 @@ class ClientWindow(QMainWindow):
             setting_bind_port = int(self.settings.value('bind_port', 54321))
             setting_receive_dir = self.settings.value('receive_dir', os.path.abspath('.'))
             self.settings.endGroup()
-            self.server_starter = Process(target=server.starter, args=(
+            self.server_starter = Process(target=server.starter, name='ServerStarter', args=(
                 setting_incoming_ip, setting_bind_port, setting_receive_dir, self.server_que))
             self.server_starter.start()
             # 循环读取服务端信息
@@ -383,7 +383,7 @@ class ClientWindow(QMainWindow):
                 pass
             self.Emessage_area.append('本机(localhost)：\n    {0} '.format(self.Emessage_writer.text()))
             # 由于客户端的消息队列只在发送时读取，必须传入服务器的消息队列
-            self.chat_sender = Process(target=chat_client.chat_starter,
+            self.chat_sender = Process(target=chat_client.chat_starter, name='ChatSender',
                                        args=(setting_host, setting_port, self.Emessage_writer.text(), self.server_que))
             self.chat_sender.start()
             self.Emessage_writer.clear()
@@ -407,7 +407,7 @@ class ClientWindow(QMainWindow):
         # 构建绝对路径列表并启动传输子进程，无法启动的异常反映在状态栏
         path_list = [inst.path for inst in self.files]
         try:
-            self.file_sender = Process(target=trans_client.file_thread, args=(
+            self.file_sender = Process(target=trans_client.file_thread, name='FileSender', args=(
                 setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
             self.file_sender.start()
             self.Lclient_status.setText(
@@ -463,7 +463,7 @@ class ClientWindow(QMainWindow):
         setting_port = int(self.settings.value('server_port', 12345))
         self.settings.endGroup()
         print('开启子进程abort_sender')
-        self.abort_sender = Process(target=trans_client.file_thread,
+        self.abort_sender = Process(target=trans_client.file_thread, name='AbortSender',
                                     args=(setting_host, setting_port, '', None, self.client_que))
         self.abort_sender.start()
         self.abort_sender.join()
@@ -493,10 +493,14 @@ class ClientWindow(QMainWindow):
                     # 需要设置中断标志位供closeEvent检查
                     print('服务端已中断', message)
                     self.aborted = True
+                    for inst in self.files:
+                        inst.status = 'error'
+                        index = self.find_index_by_name(inst.name)
+                        self.file_table.item(index, 4).setText('传输中断')
                     self.ui_pending()
 
                 # 若无上传中的文件，关闭传输进程，清空上传列表且提示完成结果
-                if not self.find_instance_by_status('uploading'):
+                if not self.find_instance_by_status('uploading') and not self.aborted:
                     self.Lclient_status.setText(
                         '''传输完成：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/0 
                         (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'''.format(
@@ -745,10 +749,11 @@ class ClientWindow(QMainWindow):
                 self.settings.endGroup()
                 self.settings.sync()
                 print('等待服务端中断信号')
-                while self.aborted:
-                    print('中断成功，退出程序')
-                    self.safe_close()
-                    event.accept()
+                while not self.aborted:
+                    pass
+                print('中断成功，退出程序')
+                self.safe_close()
+                event.accept()
             else:
                 event.ignore()
         else:
