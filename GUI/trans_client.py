@@ -34,7 +34,7 @@ def display_file_length(file_size):
         return '{0:.1f}GB'.format(file_size / 1073741824)
 
 
-class ClientProtocol:
+class ClientProtocol(object):
     """
     客户端主控制类。
     """
@@ -107,7 +107,7 @@ class ClientProtocol:
                 except StopIteration:
                     self.fstream.close()
             elif message['data'] == 'aborted':
-                print('收到中断回包', message)
+                self.time_counter.cancel()
                 self.que.put({'type': 'info', 'message': 'aborted', 'name': 'None'})
                 self.transport.close()
 
@@ -139,9 +139,7 @@ class ClientProtocol:
                 raw_msg = {'type': 'data', 'name': self.now.name, 'size': self.now.size, 'part': self.now.part,
                            'all': self.now.total}
                 fdata = json.dumps(raw_msg).encode() + b'---+++data+++---' + self.now.data
-        # print('Sending file:{0} (Part {1}/{2})...'.format(self.now.name, self.now.part + 1, self.now.total), end='')
         self.message_sender(fdata)
-        # print('Done.', end='\n')
 
     def message_sender(self, message):
         """

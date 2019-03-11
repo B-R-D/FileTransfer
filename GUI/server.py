@@ -23,7 +23,7 @@ def display_file_length(file_size):
         return '{0:.1f}GB'.format(file_size / 1073741824)
 
 
-class ServerProtocol:
+class ServerProtocol(object):
     def __init__(self, save_dir, que, loop):
         self.save_dir = save_dir
         self.que = que
@@ -47,7 +47,7 @@ class ServerProtocol:
             elif info['data'] == 'terminated':
                 pass
                 print('\nConnection terminated successfully.\n')
-            elif info['data'] == 'aborted':
+            elif info['data'] == 'abort':
                 for name in self.time_counter:
                     index = len(self.time_counter[name]) - 1
                     self.time_counter[name][index].cancel()

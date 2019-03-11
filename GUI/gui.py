@@ -81,7 +81,7 @@ class ClientWindow(QMainWindow):
         # 初始化进程间通信队列和传输中断标志
         self.client_que = Queue()
         self.server_que = Queue()
-        self.aborted = False
+        self.close_flag = False
         # 初始化设置文件
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
         # 初始化字体
@@ -91,6 +91,8 @@ class ClientWindow(QMainWindow):
         self.reso_height = self.resolution.height()
         self.reso_width = self.resolution.width()
         self.init_ui()
+
+    """以下是UI构造函数"""
 
     def init_ui(self):
         # 恢复上次关闭时的窗口尺寸
@@ -391,7 +393,6 @@ class ClientWindow(QMainWindow):
     def file_checker(self):
         """文件列表检查及客户端传输进程开启"""
         self.ui_sending()
-        self.aborted = False
         # 从传输设置中调用同时传输的文件数及网络设定
         self.settings.beginGroup('ClientSetting')
         setting_file_at_same_time = int(self.settings.value('file_at_same_time', 2))
@@ -447,8 +448,12 @@ class ClientWindow(QMainWindow):
 
     def abort_trans(self):
         """中断传输后发送取消消息"""
+        # 从传输设置中调用网络设定
+        self.settings.beginGroup('ClientSetting')
+        setting_host = self.settings.value('host', '127.0.0.1')
+        setting_port = int(self.settings.value('server_port', 12345))
+        self.settings.endGroup()
         try:
-            print('结束file_sender')
             self.file_sender.terminate()
             self.file_sender.join()
             self.file_sender.close()
@@ -457,12 +462,6 @@ class ClientWindow(QMainWindow):
             pass
         except AttributeError:
             pass
-        # 从传输设置中调用网络设定
-        self.settings.beginGroup('ClientSetting')
-        setting_host = self.settings.value('host', '127.0.0.1')
-        setting_port = int(self.settings.value('server_port', 12345))
-        self.settings.endGroup()
-        print('开启子进程abort_sender')
         self.abort_sender = Process(target=trans_client.file_thread, name='AbortSender',
                                     args=(setting_host, setting_port, '', None, self.client_que))
         self.abort_sender.start()
@@ -478,29 +477,28 @@ class ClientWindow(QMainWindow):
             inst = self.find_instance_by_name(message['name'])
             # index不直接计算考虑了简明视图的性能
             if message['type'] == 'info':
-                index = self.find_index_by_name(message['name'])
                 # 信息队列：依据MD5检查结果设置文件状态
                 if message['message'] == 'MD5_passed':
                     inst.status = 'complete'
+                    index = self.find_index_by_name(message['name'])
                     self.file_table.item(index, 4).setText('传输完成')
                     self.file_table.item(index, 2).setText('100 %')
                     self.del_list.append(inst.path)
                 elif message['message'] == 'MD5_failed':
                     inst.status = 'error'
+                    index = self.find_index_by_name(message['name'])
                     self.file_table.item(index, 4).setText('传输错误')
                     self.file_table.item(index, 2).setText('100 %')
                 elif message['message'] == 'aborted':
-                    # 需要设置中断标志位供closeEvent检查
-                    print('服务端已中断', message)
-                    self.aborted = True
-                    for inst in self.files:
+                    for inst in self.find_instance_by_status('uploading'):
                         inst.status = 'error'
-                        index = self.find_index_by_name(inst.name)
-                        self.file_table.item(index, 4).setText('传输中断')
+                        i = self.find_index_by_name(inst.name)
+                        self.file_table.item(i, 4).setText('传输中断')
                     self.ui_pending()
+                    self.prog_timer.stop()
 
                 # 若无上传中的文件，关闭传输进程，清空上传列表且提示完成结果
-                if not self.find_instance_by_status('uploading') and not self.aborted:
+                if not self.find_instance_by_status('uploading') and self.prog_timer.isActive():
                     self.Lclient_status.setText(
                         '''传输完成：<font color=green>{0}<font color=black>/<font color=red>{1}<font color=black>/0 
                         (<font color=green>Comp<font color=black>/<font color=red>Err<font color=black>/Up)'''.format(
@@ -629,7 +627,12 @@ class ClientWindow(QMainWindow):
 
     def safe_close(self):
         """结束子进程及计时器"""
-        print('进入safe_close')
+        # 记录关闭时的窗口尺寸
+        self.settings.beginGroup('Misc')
+        self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
+        self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
+        self.settings.endGroup()
+        self.settings.sync()
         try:
             # 关闭服务器，进度计时器和传输子进程
             self.server_timer.stop()
@@ -637,8 +640,8 @@ class ClientWindow(QMainWindow):
             self.server_starter.terminate()
             self.server_starter.join()
             self.server_starter.close()
-            self.prog_timer.stop()
-            del self.prog_timer
+            self.timer.stop()
+            del self.timer
             self.file_sender.terminate()
             self.file_sender.join()
             self.file_sender.close()
@@ -667,10 +670,7 @@ class ClientWindow(QMainWindow):
 
     def find_instance_by_status(self, status):
         """按文件状态在文件列表中查找实例，没有返回空列表"""
-        inst_list = []
-        for inst in self.files:
-            if inst.status[0] == status:
-                inst_list.append(inst)
+        inst_list = [inst for inst in self.files if inst.status[0] == status]
         return inst_list
 
     def find_index_by_name(self, name):
@@ -731,7 +731,6 @@ class ClientWindow(QMainWindow):
 
     def closeEvent(self, event):
         """关闭前检查是否有传输中的文件"""
-        print('进关闭事件了')
         if self.find_instance_by_status('uploading'):
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle('警告')
@@ -742,27 +741,11 @@ class ClientWindow(QMainWindow):
             reply = msg_box.exec()
             if reply == QMessageBox.AcceptRole:
                 self.abort_trans()
-                # 记录关闭时的窗口尺寸
-                self.settings.beginGroup('Misc')
-                self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
-                self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
-                self.settings.endGroup()
-                self.settings.sync()
-                print('等待服务端中断信号')
-                while not self.aborted:
-                    pass
-                print('中断成功，退出程序')
                 self.safe_close()
                 event.accept()
             else:
                 event.ignore()
         else:
-            # 记录关闭时的窗口尺寸
-            self.settings.beginGroup('Misc')
-            self.settings.setValue('window_size', (self.geometry().width(), self.geometry().height()))
-            self.settings.setValue('frame_width', (self.sender_frame.width(), self.chat_frame.width()))
-            self.settings.endGroup()
-            self.settings.sync()
             self.safe_close()
             event.accept()
 
