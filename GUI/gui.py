@@ -640,8 +640,8 @@ class ClientWindow(QMainWindow):
             self.server_starter.terminate()
             self.server_starter.join()
             self.server_starter.close()
-            self.timer.stop()
-            del self.timer
+            self.prog_timer.stop()
+            del self.prog_timer
             self.file_sender.terminate()
             self.file_sender.join()
             self.file_sender.close()
