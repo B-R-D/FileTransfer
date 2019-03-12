@@ -159,7 +159,7 @@ class ClientProtocol(object):
         self.md5 = md5.hexdigest()
 
 
-async def file_main(host, port, path, threading_controller, que):
+async def main(host, port, path, threading_controller, que):
     """
     传输控制类实例构造函数，传输端点在此关闭。
     """
@@ -180,7 +180,7 @@ async def file_main(host, port, path, threading_controller, que):
         transport.close()
 
 
-def file_thread(host, port, file, file_at_same_time, que):
+def starter(host, port, file, file_at_same_time, que):
     """
     传输线程启动函数。
     """
@@ -188,10 +188,10 @@ def file_thread(host, port, file, file_at_same_time, que):
         threading_controller = threading.BoundedSemaphore(value=file_at_same_time)
         for path in file:
             thread_asyncio = threading.Thread(target=asyncio.run,
-                                              args=(file_main(host, port, path, threading_controller, que),))
+                                              args=(main(host, port, path, threading_controller, que),))
             thread_asyncio.start()
     else:
         thread_asyncio = threading.Thread(target=asyncio.run,
-                                          args=(file_main(host, port, [], None, que),))
+                                          args=(main(host, port, [], None, que),))
         thread_asyncio.start()
     thread_asyncio.join()

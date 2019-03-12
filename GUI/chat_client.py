@@ -1,6 +1,5 @@
 # coding:utf-8
 """聊天客户端"""
-
 import asyncio
 import json
 import random

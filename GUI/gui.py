@@ -1,6 +1,5 @@
 # coding:utf-8
 """UDP客户端GUI版"""
-# 改进：增加传输中和程序退出前提示取消功能
 import functools
 import os
 import queue
@@ -92,7 +91,7 @@ class ClientWindow(QMainWindow):
         self.reso_width = self.resolution.width()
         self.init_ui()
 
-    """以下是UI构造函数"""
+    """UI构造函数"""
 
     def init_ui(self):
         # 恢复上次关闭时的窗口尺寸
@@ -318,7 +317,6 @@ class ClientWindow(QMainWindow):
         self.files += add_files
         self.file_table.show()
         # 计算是否出现滚动条
-        # 能否优化为判断当前是否有滚动条后跳过执行？
         row_height = self.file_table.rowHeight(0) * self.file_table.rowCount()
         header_height = self.file_table.horizontalHeader().height()
         if row_height + header_height >= self.file_table.height():
@@ -330,45 +328,48 @@ class ClientWindow(QMainWindow):
                 changed_text = self.shorten_filename(inst.name, self.file_table.columnWidth(1))
                 inst.label.setText(changed_text)
 
-    def button_pressed(self):
-        self.settings.beginGroup('ClientSetting')
-        setting_del_timeout = float(self.settings.value('del_timeout', 1))
+    def ui_sending(self):
+        """传输前UI处理函数"""
+        self.act_choose.setDisabled(True)
+        self.act_send.setDisabled(True)
+        self.act_stop_send.setDisabled(False)
+        self.Bselector.setDisabled(True)
+        self.Bfile_sender.setText('中止传输')
+        self.Bfile_sender.clicked.disconnect(self.file_checker)
+        self.Bfile_sender.clicked.connect(self.abort_trans)
+        # 删除按钮不可用
+        for inst in self.files:
+            inst.button.setDisabled(True)
+
+    def ui_pending(self):
+        self.act_choose.setDisabled(False)
+        self.act_stop_send.setDisabled(True)
+        self.Bselector.setDisabled(False)
+        self.Bfile_sender.setText('发送')
+        self.Bfile_sender.clicked.disconnect(self.abort_trans)
+        self.Bfile_sender.clicked.connect(self.file_checker)
+        # 删除按钮可用
+        for inst in self.files:
+            inst.button.setDisabled(False)
+
+    def ui_setting_checker(self):
+        self.settings.beginGroup('UISetting')
+        setting_status_bar = int(self.settings.value('status_bar', True))
+        setting_chat_frame = int(self.settings.value('chat_frame', True))
         self.settings.endGroup()
-        self.button_timer = QTimer()
-        self.button_timer.timeout.connect(self.remove_all)
-        self.button_timer.setSingleShot(True)
-        self.button_timer.start(setting_del_timeout * 1000)
+        if setting_status_bar:
+            self.status_bar.show()
+        else:
+            self.status_bar.hide()
+        if setting_chat_frame:
+            self.chat_frame.show()
+        else:
+            self.chat_frame.hide()
 
-    def button_released(self):
-        self.button_timer.stop()
-
-    def remove_all(self):
-        # 批量删除时需要从末尾开始逐个删除
-        for i in range(len(self.files), 0, -1):
-            self.del_file(self.files[i - 1])
-
-    def shorten_filename(self, name, width):
-        """根据给定的宽度截断文件名并添加...，返回截断后的文件名"""
-        # 从第n个字符开始计算长度并添加...
-        metrics = QFontMetrics(self.font())
-        if metrics.width(name) > width - self.reso_width / 128:
-            for i in range(4, len(name)):
-                if metrics.width(name[:i]) > width - self.reso_width / 128:
-                    return name[:i] + '...'
-        return name
-
-    def del_file(self, inst):
-        """按钮上绑定的删除事件：从当前表格中找到行索引并删除以及删除文件列表中的实例。"""
-        index = self.find_index_by_name(inst.name)
-        self.file_table.removeRow(index)
-        self.files.remove(inst)
-        if not self.files:
-            self.file_table.hide()
-            self.Lfile_empty.show()
-            self.act_send.setDisabled(True)
-            self.Bfile_sender.setDisabled(True)
+    """进程启动函数"""
 
     def chat_checker(self):
+        """聊天进程启动函数"""
         if self.Emessage_writer.text():
             self.settings.beginGroup('ClientSetting')
             setting_host = self.settings.value('host', '127.0.0.1')
@@ -408,7 +409,7 @@ class ClientWindow(QMainWindow):
         # 构建绝对路径列表并启动传输子进程，无法启动的异常反映在状态栏
         path_list = [inst.path for inst in self.files]
         try:
-            self.file_sender = Process(target=trans_client.file_thread, name='FileSender', args=(
+            self.file_sender = Process(target=trans_client.starter, name='FileSender', args=(
                 setting_host, setting_port, path_list, setting_file_at_same_time, self.client_que))
             self.file_sender.start()
             self.Lclient_status.setText(
@@ -422,52 +423,52 @@ class ClientWindow(QMainWindow):
         self.prog_timer.timeout.connect(self.update_prog)
         self.prog_timer.start(5)
 
-    def ui_sending(self):
-        """传输前UI处理函数"""
-        self.act_choose.setDisabled(True)
-        self.act_send.setDisabled(True)
-        self.act_stop_send.setDisabled(False)
-        self.Bselector.setDisabled(True)
-        self.Bfile_sender.setText('中止传输')
-        self.Bfile_sender.clicked.disconnect(self.file_checker)
-        self.Bfile_sender.clicked.connect(self.abort_trans)
-        # 删除按钮不可用
-        for inst in self.files:
-            inst.button.setDisabled(True)
+    """后台状态函数"""
 
-    def ui_pending(self):
-        self.act_choose.setDisabled(False)
-        self.act_stop_send.setDisabled(True)
-        self.Bselector.setDisabled(False)
-        self.Bfile_sender.setText('发送')
-        self.Bfile_sender.clicked.disconnect(self.abort_trans)
-        self.Bfile_sender.clicked.connect(self.file_checker)
-        # 删除按钮可用
-        for inst in self.files:
-            inst.button.setDisabled(False)
-
-    def abort_trans(self):
-        """中断传输后发送取消消息"""
-        # 从传输设置中调用网络设定
-        self.settings.beginGroup('ClientSetting')
-        setting_host = self.settings.value('host', '127.0.0.1')
-        setting_port = int(self.settings.value('server_port', 12345))
-        self.settings.endGroup()
+    def server_status(self):
+        """启动时循环读取服务端状态及更新聊天信息"""
         try:
-            self.file_sender.terminate()
-            self.file_sender.join()
-            self.file_sender.close()
-            del self.file_sender
-        except ValueError:
+            message = self.server_que.get(block=False)
+            if message['type'] == 'server_info':
+                if message['message'] == 'error':
+                    self.Lserver_status.setText(message['detail'])
+                elif message['message'] == 'ready':
+                    self.Lserver_status.setText('服务端已就绪')
+                elif message['message'] == 'MD5_passed':
+                    self.succeed_files.append(message['message'])
+                    self.Lserver_status.setText(
+                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
+                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
+                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+                elif message['message'] == 'MD5_failed':
+                    self.failed_files.append(message['message'])
+                    self.Lserver_status.setText(
+                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
+                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
+                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+                elif message['message'] == 'started':
+                    self.received_files.append(message['message'])
+                    self.Lserver_status.setText(
+                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
+                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
+                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
+            elif message['type'] == 'chat':
+                if message['status'] == 'success':
+                    self.chat_sender.terminate()
+                    self.chat_sender.join()
+                    self.Emessage_area.moveCursor(QTextCursor.End)
+                    self.Emessage_area.insertHtml('<font color=green>✓<font color=black> ')
+                elif message['status'] == 'failed':
+                    self.chat_sender.terminate()
+                    self.chat_sender.join()
+                    self.Emessage_area.moveCursor(QTextCursor.End)
+                    self.Emessage_area.insertHtml('<font color=red>✘<font color=black> ')
+                elif message['status'] == 'received':
+                    self.Emessage_area.append(
+                        '{0}:{1}：\n    {2}'.format(message['from'][0], message['from'][1], message['message']))
+                    self.Lserver_status.setText('收到来自{0}:{1}的聊天消息'.format(message['from'][0], message['from'][1]))
+        except queue.Empty:
             pass
-        except AttributeError:
-            pass
-        self.abort_sender = Process(target=trans_client.file_thread, name='AbortSender',
-                                    args=(setting_host, setting_port, '', None, self.client_que))
-        self.abort_sender.start()
-        self.abort_sender.join()
-        self.abort_sender.close()
-        del self.abort_sender
 
     def update_prog(self):
         """传输过程管理及进度条更新"""
@@ -496,7 +497,6 @@ class ClientWindow(QMainWindow):
                         self.file_table.item(i, 4).setText('传输中断')
                     self.ui_pending()
                     self.prog_timer.stop()
-
                 # 若无上传中的文件，关闭传输进程，清空上传列表且提示完成结果
                 if not self.find_instance_by_status('uploading') and self.prog_timer.isActive():
                     self.Lclient_status.setText(
@@ -566,64 +566,70 @@ class ClientWindow(QMainWindow):
             # 忽略空队列异常
             pass
 
-    def server_status(self):
-        """启动时循环读取服务端状态及更新聊天信息"""
-        try:
-            message = self.server_que.get(block=False)
-            if message['type'] == 'server_info':
-                if message['message'] == 'error':
-                    self.Lserver_status.setText(message['detail'])
-                elif message['message'] == 'ready':
-                    self.Lserver_status.setText('服务端已就绪')
-                elif message['message'] == 'MD5_passed':
-                    self.succeed_files.append(message['message'])
-                    self.Lserver_status.setText(
-                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
-                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
-                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
-                elif message['message'] == 'MD5_failed':
-                    self.failed_files.append(message['message'])
-                    self.Lserver_status.setText(
-                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
-                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
-                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
-                elif message['message'] == 'started':
-                    self.received_files.append(message['message'])
-                    self.Lserver_status.setText(
-                        '''{0}=<font color=green>{1}<font color=black>+<font color=red>{2}<font color=black> 
-                        (Tol=<font color=green>Comp<font color=black>+<font color=red>Err<font color=black>)'''.format(
-                            len(self.received_files), len(self.succeed_files), len(self.failed_files)))
-            elif message['type'] == 'chat':
-                if message['status'] == 'success':
-                    self.chat_sender.terminate()
-                    self.chat_sender.join()
-                    self.Emessage_area.moveCursor(QTextCursor.End)
-                    self.Emessage_area.insertHtml('<font color=green>✓<font color=black> ')
-                elif message['status'] == 'failed':
-                    self.chat_sender.terminate()
-                    self.chat_sender.join()
-                    self.Emessage_area.moveCursor(QTextCursor.End)
-                    self.Emessage_area.insertHtml('<font color=red>✘<font color=black> ')
-                elif message['status'] == 'received':
-                    self.Emessage_area.append(
-                        '{0}:{1}：\n    {2}'.format(message['from'][0], message['from'][1], message['message']))
-                    self.Lserver_status.setText('收到来自{0}:{1}的聊天消息'.format(message['from'][0], message['from'][1]))
-        except queue.Empty:
-            pass
+    """绑定事件函数"""
 
-    def ui_setting_checker(self):
-        self.settings.beginGroup('UISetting')
-        setting_status_bar = int(self.settings.value('status_bar', True))
-        setting_chat_frame = int(self.settings.value('chat_frame', True))
+    def del_file(self, inst):
+        """按钮上绑定的删除事件：从当前表格中找到行索引并删除以及删除文件列表中的实例。"""
+        index = self.find_index_by_name(inst.name)
+        self.file_table.removeRow(index)
+        self.files.remove(inst)
+        if not self.files:
+            self.file_table.hide()
+            self.Lfile_empty.show()
+            self.act_send.setDisabled(True)
+            self.Bfile_sender.setDisabled(True)
+
+    def button_pressed(self):
+        self.settings.beginGroup('ClientSetting')
+        setting_del_timeout = float(self.settings.value('del_timeout', 1))
         self.settings.endGroup()
-        if setting_status_bar:
-            self.status_bar.show()
-        else:
-            self.status_bar.hide()
-        if setting_chat_frame:
-            self.chat_frame.show()
-        else:
-            self.chat_frame.hide()
+        self.button_timer = QTimer()
+        self.button_timer.timeout.connect(self.remove_all)
+        self.button_timer.setSingleShot(True)
+        self.button_timer.start(setting_del_timeout * 1000)
+
+    def button_released(self):
+        self.button_timer.stop()
+
+    def remove_all(self):
+        # 批量删除时需要从末尾开始逐个删除
+        for i in range(len(self.files), 0, -1):
+            self.del_file(self.files[i - 1])
+
+    """通用功能性函数"""
+
+    def abort_trans(self):
+        """中断传输后发送取消消息"""
+        # 从传输设置中调用网络设定
+        self.settings.beginGroup('ClientSetting')
+        setting_host = self.settings.value('host', '127.0.0.1')
+        setting_port = int(self.settings.value('server_port', 12345))
+        self.settings.endGroup()
+        try:
+            self.file_sender.terminate()
+            self.file_sender.join()
+            self.file_sender.close()
+            del self.file_sender
+        except ValueError:
+            pass
+        except AttributeError:
+            pass
+        self.abort_sender = Process(target=trans_client.starter, name='AbortSender',
+                                    args=(setting_host, setting_port, '', None, self.client_que))
+        self.abort_sender.start()
+        self.abort_sender.join()
+        self.abort_sender.close()
+        del self.abort_sender
+
+    def shorten_filename(self, name, width):
+        """根据给定的宽度截断文件名并添加...，返回截断后的文件名"""
+        # 从第n个字符开始计算长度并添加...
+        metrics = QFontMetrics(self.font())
+        if metrics.width(name) > width - self.reso_width / 128:
+            for i in range(4, len(name)):
+                if metrics.width(name[:i]) > width - self.reso_width / 128:
+                    return name[:i] + '...'
+        return name
 
     def safe_close(self):
         """结束子进程及计时器"""
@@ -681,6 +687,8 @@ class ClientWindow(QMainWindow):
                 return i
         return None
 
+    """对话框实例创建函数"""
+
     def file_dialog(self):
         """文件选择对话框，制作文件实例"""
         # 从配置文件中读取历史路径
@@ -728,6 +736,8 @@ class ClientWindow(QMainWindow):
         self.ui_setting.setAttribute(Qt.WA_DeleteOnClose)
         self.ui_setting.destroyed.connect(self.ui_setting_checker)
         self.ui_setting.show()
+
+    """事件函数重载"""
 
     def closeEvent(self, event):
         """关闭前检查是否有传输中的文件"""
