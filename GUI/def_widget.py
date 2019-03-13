@@ -83,6 +83,9 @@ class ClientSettingDialog(QWidget):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
+        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
+        self.reso_height = self.resolution.height()
+        self.reso_width = self.resolution.width()
         self.init_ui()
 
     def init_ui(self):
@@ -90,9 +93,6 @@ class ClientSettingDialog(QWidget):
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
         # 对话框位置及尺寸
-        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.reso_height = self.resolution.height()
-        self.reso_width = self.resolution.width()
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
         self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
@@ -205,6 +205,9 @@ class ServerSettingDialog(QWidget):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
+        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
+        self.reso_height = self.resolution.height()
+        self.reso_width = self.resolution.width()
         self.init_ui()
 
     def init_ui(self):
@@ -212,9 +215,6 @@ class ServerSettingDialog(QWidget):
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
         # 对话框位置及尺寸
-        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.reso_height = self.resolution.height()
-        self.reso_width = self.resolution.width()
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
         self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
@@ -324,14 +324,14 @@ class UIDialog(QWidget):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
+        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
+        self.reso_height = self.resolution.height()
+        self.reso_width = self.resolution.width()
         self.init_ui()
 
     def init_ui(self):
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.reso_height = self.resolution.height()
-        self.reso_width = self.resolution.width()
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
         self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,

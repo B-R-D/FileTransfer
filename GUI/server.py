@@ -52,6 +52,7 @@ class ServerProtocol(object):
                     index = len(self.time_counter[name]) - 1
                     self.time_counter[name][index].cancel()
                     os.remove(os.path.join(self.save_dir, name))
+                    self.que.put({'type': 'server_info', 'message': 'aborted', 'name': info['name']})
                 self.time_counter = {}
                 message = {'type': 'message', 'data': 'aborted'}
                 self.transport.sendto(json.dumps(message).encode(), addr)
