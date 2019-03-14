@@ -29,8 +29,9 @@ class ServerProtocol(object):
         self.que = que
         self.loop = loop
         self.transport = None
-        # 计数器字典：{name1: {part1: counter, ...}, ...}
-        self.time_counter = {}
+
+        self.time_counter = {}      # 计数器字典：{name1: {part1: counter, ...}, ...}
+        self.rename = {}        # 重名字典：{true_name: fake_name}
 
     def connection_made(self, transport):
         self.transport = transport
@@ -39,21 +40,21 @@ class ServerProtocol(object):
         info = json.loads(data.split(b'---+++data+++---')[0])
         if info['type'] == 'message':
             if info['data'] == 'established':
-                # 新建计时器记录
                 if info['name'] not in self.time_counter:
-                    self.time_counter[info['name']] = {}
+                    self.rename[info['name']] = self.name_checker(info['name'])
+                    self.time_counter[info['name']] = {}        # 新建计时器记录
                     self.que.put({'type': 'server_info', 'message': 'started', 'name': info['name']})
                     self.message_sender({'type': 'message', 'data': 'get', 'name': info['name'], 'part': 0}, addr)
             elif info['data'] == 'terminated':
-                pass
                 print('\nConnection terminated successfully.\n')
             elif info['data'] == 'abort':
                 for name in self.time_counter:
                     index = len(self.time_counter[name]) - 1
                     self.time_counter[name][index].cancel()
-                    os.remove(os.path.join(self.save_dir, name))
+                    os.remove(os.path.join(self.save_dir, self.rename[name]))       # 需测试
                     self.que.put({'type': 'server_info', 'message': 'aborted', 'name': info['name']})
                 self.time_counter = {}
+                self.rename = {}
                 message = {'type': 'message', 'data': 'aborted'}
                 self.transport.sendto(json.dumps(message).encode(), addr)
                 print('\nTransmission aborted by client.\n')
@@ -66,11 +67,12 @@ class ServerProtocol(object):
                 wd.start()
                 if len(self.time_counter[info['name']]) - 1 == info['all']:
                     wd.join()
-                    self.time_counter.pop(info['name'])
                     checker = threading.Thread(target=self.md5_checker, args=(info, addr))
                     checker.start()
                     msg = json.dumps({'type': 'message', 'data': 'complete', 'name': info['name']}).encode()
                     self.transport.sendto(msg, addr)
+                    self.time_counter.pop(info['name'])
+                    self.rename.pop(info['name'])
                     print('\nFile: {0}({1}) transmission complete.\n'
                           .format(info['name'], display_file_length(info['size'])))
         elif info['type'] == 'chat':
@@ -83,7 +85,7 @@ class ServerProtocol(object):
 
     def write_data(self, info, data, addr):
         """写入本地数据并调用get消息回发函数"""
-        with open(os.path.join(self.save_dir, info['name']), 'ab') as filedata:
+        with open(os.path.join(self.save_dir, self.rename[info['name']]), 'ab') as filedata:
             filedata.write(data)
         # 非末块则有回送操作(这里是用插入新值封住了接收重复块)
         if not len(self.time_counter[info['name']]) - 1 == info['all']:
@@ -98,7 +100,7 @@ class ServerProtocol(object):
 
     def md5_checker(self, info, addr):
         """MD5检查函数，不带重发机制"""
-        with open(os.path.join(self.save_dir, info['name']), 'rb') as filedata:
+        with open(os.path.join(self.save_dir, self.rename[info['name']]), 'rb') as filedata:
             md5 = hashlib.md5()
             for line in filedata:
                 md5.update(line)
@@ -112,6 +114,16 @@ class ServerProtocol(object):
             self.transport.sendto(msg, addr)
             self.que.put({'type': 'server_info', 'message': 'MD5_failed', 'name': info['name']})
             # print('\n', info['name'], 'MD5 checking failed.\n')
+
+    def name_checker(self, name, count=1):
+        """同名文件检查函数，有同名文件就在原名后加序号直到没有，返回新文件名"""
+        if name in os.listdir(self.save_dir):  # 判定目录下的同名文件
+            fname, ext = os.path.splitext(name)
+            fn = fname.rsplit('_', 1)[0]
+            rename = fn + '_' + str(count) + ext
+            return self.name_checker(rename, count + 1)
+        else:
+            return name
 
 
 async def main(incoming_ip, bind_port, save_dir, que):
