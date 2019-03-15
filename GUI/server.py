@@ -28,6 +28,7 @@ class ServerProtocol(object):
         self.save_dir = save_dir
         self.que = que
         self.loop = loop
+        self.aborted = False        # 中断标志位
         self.transport = None
 
         self.time_counter = {}      # 计数器字典：{name1: {part1: counter, ...}, ...}
@@ -39,6 +40,7 @@ class ServerProtocol(object):
     def datagram_received(self, data, addr):
         info = json.loads(data.split(b'---+++data+++---')[0])
         if info['type'] == 'message':
+            print(info)
             if info['data'] == 'established':
                 if info['name'] not in self.time_counter:
                     self.rename[info['name']] = self.name_checker(info['name'])
@@ -48,16 +50,20 @@ class ServerProtocol(object):
             elif info['data'] == 'terminated':
                 print('\nConnection terminated successfully.\n')
             elif info['data'] == 'abort':
-                for name in self.time_counter:
-                    index = len(self.time_counter[name]) - 1
-                    self.time_counter[name][index].cancel()
-                    os.remove(os.path.join(self.save_dir, self.rename[name]))       # 需测试
-                    self.que.put({'type': 'server_info', 'message': 'aborted', 'name': info['name']})
-                self.time_counter = {}
-                self.rename = {}
-                message = {'type': 'message', 'data': 'aborted'}
-                self.transport.sendto(json.dumps(message).encode(), addr)
-                print('\nTransmission aborted by client.\n')
+                if not self.aborted:
+                    self.aborted = True
+                    message = {'type': 'message', 'data': 'aborted'}
+                    self.transport.sendto(json.dumps(message).encode(), addr)
+                    print('abort', self.rename)
+                    for name in self.time_counter:
+                        index = len(self.time_counter[name]) - 1
+                        print(self.time_counter[name], index)
+                        os.remove(os.path.join(self.save_dir, self.rename[name]))       # 需测试
+                        self.que.put({'type': 'server_info', 'message': 'aborted'})
+                        self.time_counter[name][index].cancel()
+                    self.time_counter = {}
+                    self.rename = {}
+                    print('\nTransmission aborted by client.\n')
         elif info['type'] == 'data':
             data = data.split(b'---+++data+++---')[1]
             if info['name'] in self.time_counter and info['part'] == len(self.time_counter[info['name']]) - 1:

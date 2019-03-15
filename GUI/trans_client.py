@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import os
+import time
 import random
 import threading
 
@@ -69,6 +70,7 @@ class ClientProtocol(object):
             self.thread_md5.start()
         else:
             msg = json.dumps({'type': 'message', 'data': 'abort'}).encode()
+            time.sleep(0.5)     # 防止服务端还没新建计时器实例
         self.message_sender(msg)
 
     def datagram_received(self, data, addr):

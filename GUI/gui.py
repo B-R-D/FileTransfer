@@ -718,10 +718,12 @@ class ClientWindow(QMainWindow):
         self.settings.endGroup()
         fname = QFileDialog.getOpenFileNames(self, '请选择文件', setting_path_history)
         if fname[0]:
-            # 用集合set求新增文件路径列表
+            # 用集合set求纯新增文件路径列表
             new_list = set(fname[0])
             old_list = {inst.path for inst in self.files}
-            add_list = new_list - old_list
+            old_name = {inst.name for inst in self.files}
+            same_list = {path for path in new_list if os.path.split(path)[1] in old_name}
+            add_list = new_list - old_list - same_list
             # 纯新增文件列表
             add_files = [FileStatus(path) for path in add_list]
             self.Lfile_empty.hide()
