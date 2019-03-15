@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import os
+import time
 import random
 import threading
 
@@ -53,7 +54,9 @@ class ServerProtocol(object):
                 if not self.aborted:
                     self.aborted = True
                     message = {'type': 'message', 'data': 'aborted'}
-                    self.transport.sendto(json.dumps(message).encode(), addr)
+                    for i in range(3):
+                        self.transport.sendto(json.dumps(message).encode(), addr)
+                        time.sleep(0.2)
                     print('abort', self.rename)
                     for name in self.time_counter:
                         index = len(self.time_counter[name]) - 1
