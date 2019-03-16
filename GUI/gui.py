@@ -626,15 +626,23 @@ class ClientWindow(QMainWindow):
                                     args=(setting_host, setting_port, '', None, self.client_que))
         self.abort_sender.start()
         self.abort_sender.join(5)
+        self.abort_sender.terminate()
+        self.abort_sender.join()
         if not self.abort_sender.exitcode:
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle('警告')
-            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setIcon(QMessageBox.Warning)
             msg_box.setText('接收端无响应！')
             msg_box.addButton('确定', QMessageBox.AcceptRole)
             msg_box.exec()
-            self.abort_sender.terminate()
-            self.abort_sender.close()
+            self.abort_sender.kill()
+            for inst in self.find_instance_by_status('uploading'):
+                inst.status = 'error'
+                i = self.find_index_by_name(inst.name)
+                self.file_table.item(i, 4).setText('传输中断')
+            self.ui_pending()
+            self.abort_sender.join()
+        self.abort_sender.close()
         del self.abort_sender
 
     def shorten_filename(self, name, width):
@@ -685,16 +693,10 @@ class ClientWindow(QMainWindow):
 
     def find_instance_by_name(self, name):
         """按文件名在文件列表中查找实例，没有返回None"""
-        # 函数有问题，若允许同名不同路径文件则返回的应该是列表
         for inst in self.files:
             if inst.name == name:
                 return inst
         return None
-
-    """
-        inst_list = [inst for inst in self.files if inst.name == name]
-        return inst_list
-        """
 
     def find_instance_by_status(self, status):
         """按文件状态在文件列表中查找实例，没有返回空列表"""
@@ -703,18 +705,11 @@ class ClientWindow(QMainWindow):
 
     def find_index_by_name(self, name):
         """按文件名在表格视图中查找索引，没有返回None"""
-        # 函数有问题，若允许同名不同路径文件则返回的应该是列表
         row = self.file_table.rowCount()
         for i in range(row):
             if self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() == name:
                 return i
         return None
-
-    """
-        row = self.file_table.rowCount()
-        row_list = [i for i in range(row) if self.file_table.cellWidget(i, 1).layout().widget(1).toolTip() == name]
-        return row_list
-        """
 
     """对话框实例创建函数"""
 

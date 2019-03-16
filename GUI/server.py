@@ -53,14 +53,14 @@ class ServerProtocol(object):
             elif info['data'] == 'abort':
                 if not self.aborted:
                     self.aborted = True
-                    self.transport.sendto({'type': 'message', 'data': 'aborted'}, addr)
+                    self.transport.sendto(json.dumps({'type': 'message', 'data': 'aborted'}).encode(), addr)
                     print('abort', self.rename)
                     for name in self.time_counter:
                         index = len(self.time_counter[name]) - 1
                         try:
                             os.remove(os.path.join(self.save_dir, self.rename[name]))
-                        except OSError:
-                            print('删除中断文件失败')
+                        except OSError as e:
+                            self.que.put({'type': 'server_info', 'message': 'error', 'detail': repr(e)})
                         self.que.put({'type': 'server_info', 'message': 'aborted'})
                         self.time_counter[name][index].cancel()
                     self.time_counter = {}
