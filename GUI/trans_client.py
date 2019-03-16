@@ -82,21 +82,18 @@ class ClientProtocol(object):
             if message['data'] == 'complete' and message['name'] == self.now.name:
                 # 文件传输完成后接收complete信息并清除定时器
                 self.time_counter.cancel()
-                # print('\nTransmission complete.')
             elif message['data'] == 'MD5_passed':
                 # 向主进程传递MD5信息并释放锁
                 self.que.put({'type': 'info', 'name': message['name'], 'message': 'MD5_passed'})
                 msg = json.dumps({'type': 'message', 'data': 'terminated'}).encode()
                 self.transport.sendto(msg)
                 self.tc.release()
-                # print('\nMD5 checking passed.')
                 self.fstream.close()
             elif message['data'] == 'MD5_failed':
                 self.que.put({'type': 'info', 'name': message['name'], 'message': 'MD5_failed'})
                 msg = json.dumps({'type': 'message', 'data': 'terminated'}).encode()
                 self.transport.sendto(msg)
                 self.tc.release()
-                # print('\nMD5 checking failed.')
                 self.fstream.close()
             elif message['data'] == 'get' and message['part'] == self.now.part and message['name'] == self.now.name:
                 # 接收到成功回包则更新进度条消息并发送下一个包

@@ -625,8 +625,16 @@ class ClientWindow(QMainWindow):
         self.abort_sender = Process(target=trans_client.starter, name='AbortSender',
                                     args=(setting_host, setting_port, '', None, self.client_que))
         self.abort_sender.start()
-        self.abort_sender.join()
-        self.abort_sender.close()
+        self.abort_sender.join(5)
+        if not self.abort_sender.exitcode:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle('警告')
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setText('接收端无响应！')
+            msg_box.addButton('确定', QMessageBox.AcceptRole)
+            msg_box.exec()
+            self.abort_sender.terminate()
+            self.abort_sender.close()
         del self.abort_sender
 
     def shorten_filename(self, name, width):

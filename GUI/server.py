@@ -7,7 +7,6 @@ import asyncio
 import hashlib
 import json
 import os
-import time
 import random
 import threading
 
@@ -44,6 +43,7 @@ class ServerProtocol(object):
             print(info)
             if info['data'] == 'established':
                 if info['name'] not in self.time_counter:
+                    self.aborted = False        # 清除中断标志位
                     self.rename[info['name']] = self.name_checker(info['name'])
                     self.time_counter[info['name']] = {}        # 新建计时器记录
                     self.que.put({'type': 'server_info', 'message': 'started', 'name': info['name']})
@@ -53,15 +53,14 @@ class ServerProtocol(object):
             elif info['data'] == 'abort':
                 if not self.aborted:
                     self.aborted = True
-                    message = {'type': 'message', 'data': 'aborted'}
-                    for i in range(3):
-                        self.transport.sendto(json.dumps(message).encode(), addr)
-                        time.sleep(0.2)
+                    self.transport.sendto({'type': 'message', 'data': 'aborted'}, addr)
                     print('abort', self.rename)
                     for name in self.time_counter:
                         index = len(self.time_counter[name]) - 1
-                        print(self.time_counter[name], index)
-                        os.remove(os.path.join(self.save_dir, self.rename[name]))       # 需测试
+                        try:
+                            os.remove(os.path.join(self.save_dir, self.rename[name]))
+                        except OSError:
+                            print('删除中断文件失败')
                         self.que.put({'type': 'server_info', 'message': 'aborted'})
                         self.time_counter[name][index].cancel()
                     self.time_counter = {}
