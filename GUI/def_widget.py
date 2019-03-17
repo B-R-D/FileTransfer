@@ -1,8 +1,5 @@
 # coding:utf-8
-"""
-自定义的QT控件集
-聊天显示/输入框；
-"""
+"""自定义QT控件集"""
 import os
 
 from PyQt5.QtCore import Qt, QSettings
@@ -13,12 +10,14 @@ from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout
 
 
 class MessageDisplayEdit(QTextEdit):
+    """聊天历史记录框。"""
+
     def __init__(self, parent):
         super().__init__(parent)
         self.copy_flag = False
 
     def copy_controller(self, yes):
-        """复制状态记录函数"""
+        """复制状态记录函数。"""
         self.copy_flag = yes
 
     def contextMenuEvent(self, event):
@@ -27,8 +26,7 @@ class MessageDisplayEdit(QTextEdit):
         act_copy = menu.addAction('复制')
         menu.addSeparator()
         act_clear = menu.addAction('清空')
-        # 将是否可以复制的状态记录到类变量中
-        self.copyAvailable.connect(self.copy_controller)
+        self.copyAvailable.connect(self.copy_controller)  # 将是否可以复制的状态记录到类变量中
         if not self.toPlainText():
             act_select_all.setEnabled(False)
             act_copy.setEnabled(False)
@@ -36,7 +34,6 @@ class MessageDisplayEdit(QTextEdit):
         else:
             act_copy.setEnabled(self.copy_flag)
         action = menu.exec(self.mapToGlobal(event.pos()))
-        # 选择行为
         if action == act_copy:
             self.copy()
         elif action == act_select_all:
@@ -46,6 +43,8 @@ class MessageDisplayEdit(QTextEdit):
 
 
 class MessageWriter(QLineEdit):
+    """聊天消息发送框。"""
+
     def __init__(self, parent):
         super().__init__(parent)
 
@@ -63,7 +62,6 @@ class MessageWriter(QLineEdit):
             act_cut.setEnabled(self.hasSelectedText())
             act_copy.setEnabled(self.hasSelectedText())
         action = menu.exec(self.mapToGlobal(event.pos()))
-        # 选择行为
         if action == act_cut:
             self.cut()
         elif action == act_copy:
@@ -75,9 +73,7 @@ class MessageWriter(QLineEdit):
 
 
 class ClientSettingDialog(QWidget):
-    """
-    发送端设置对话框(模态)
-    """
+    """发送端设置对话框(模态)"""
 
     def __init__(self, parent):
         super().__init__()
@@ -89,10 +85,8 @@ class ClientSettingDialog(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        # 模态对话框且只有关闭按钮
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        # 对话框位置及尺寸
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
         self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
@@ -169,11 +163,10 @@ class ClientSettingDialog(QWidget):
         self.setWindowTitle('发送端设置')
 
     def store(self):
-        # 双端端口号设置不能相同
         self.settings.beginGroup('ServerSetting')
         setting_bind_port = int(self.settings.value('bind_port', 54321))
         self.settings.endGroup()
-        if self.Sserver_port.value() == setting_bind_port:
+        if self.Sserver_port.value() == setting_bind_port:  # 双端端口号设置不能相同
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle('错误')
             msg_box.setIcon(QMessageBox.Warning)
@@ -197,9 +190,7 @@ class ClientSettingDialog(QWidget):
 
 
 class ServerSettingDialog(QWidget):
-    """
-    服务端设置对话框(模态)
-    """
+    """服务端设置对话框(模态)"""
 
     def __init__(self, parent):
         super().__init__()
@@ -211,10 +202,8 @@ class ServerSettingDialog(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        # 模态对话框且只有关闭按钮
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        # 对话框位置及尺寸
         self.setFixedSize(self.reso_width / 8, 0)
         parent_geo = self.parent.geometry()
         self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
@@ -316,9 +305,7 @@ class ServerSettingDialog(QWidget):
 
 
 class UIDialog(QWidget):
-    """
-    界面设置对话框(模态)
-    """
+    """界面设置对话框(模态)"""
 
     def __init__(self, parent):
         super().__init__()
@@ -346,7 +333,6 @@ class UIDialog(QWidget):
         self.Cstatus_bar = QCheckBox(self)
         setting_status_bar = int(self.settings.value('status_bar', True))
         self.Cstatus_bar.setChecked(setting_status_bar)
-
         self.Lchat_frame = QLabel('启用聊天栏')
         self.Cchat_frame = QCheckBox(self)
         setting_chat_frame = int(self.settings.value('chat_frame', True))
@@ -356,7 +342,6 @@ class UIDialog(QWidget):
         self.Bconfirm = QPushButton('确定', self)
         self.Bconfirm.setDefault(True)
         self.Bcancel = QPushButton('取消', self)
-
         self.Bconfirm.clicked.connect(self.store)
         self.Bcancel.clicked.connect(self.close)
 
