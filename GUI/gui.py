@@ -4,7 +4,7 @@ import functools
 import os
 import queue
 import sys
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, freeze_support
 
 from PyQt5.QtCore import Qt, QSettings, QTimer
 from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QGuiApplication, QTextCursor
@@ -29,7 +29,7 @@ class FileStatus:
         self._status = ['pending', '等待传输']
 
         picname = self._status[0] + '.png'
-        self.button = QPushButton(QIcon(os.path.join('icon', picname)), '')
+        self.button = QPushButton(QIcon(os.path.join(bundle_dir, 'icon', picname)), '')
         self.button.setToolTip(self._status[1])
         self.button.setFlat(True)
 
@@ -55,7 +55,7 @@ class FileStatus:
         self._status[0] = new_status
         self._status[1] = status[self._status[0]]
         picname = self._status[0] + '.png'
-        self.button.setIcon(QIcon(os.path.join('icon', picname)))
+        self.button.setIcon(QIcon(os.path.join(bundle_dir, 'icon', picname)))
         self.button.setToolTip(self._status[1])
 
 
@@ -89,13 +89,6 @@ class ClientWindow(QMainWindow):
     """UI构造函数"""
 
     def init_ui(self):
-        '''
-        self.settings.beginGroup('Misc')  # 恢复上次关闭时的窗口尺寸
-        setting_window_size = self.settings.value('window_size', (self.reso_height / 6.4, self.reso_width / 2.7))
-        self.settings.endGroup()
-        self.resize(setting_window_size[0], setting_window_size[1])
-        self.frameGeometry().moveCenter(self.resolution.center())  # 在屏幕中央打开窗口
-        '''
 
         self.sender_frame = QFrame()
         self.chat_frame = QFrame()
@@ -754,6 +747,11 @@ class ClientWindow(QMainWindow):
 
 
 if __name__ == '__main__':
+    freeze_support()  # win平台打包支持
+    if getattr(sys, 'frozen', False):  # 寻找程序运行目录
+        bundle_dir = sys._MEIPASS
+    else:
+        bundle_dir = os.path.dirname(os.path.abspath(__file__))
     app = QApplication(sys.argv)
     window = ClientWindow()
     sys.exit(app.exec())
