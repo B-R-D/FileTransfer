@@ -3,7 +3,6 @@
 import os
 
 from PyQt5.QtCore import Qt, QSettings
-from PyQt5.QtGui import QGuiApplication
 from PyQt5.QtWidgets import QMessageBox, QSpinBox, QCheckBox, QGroupBox, QDoubleSpinBox
 from PyQt5.QtWidgets import QPushButton, QLabel, QFileDialog, QLineEdit, QTextEdit, QMenu
 from PyQt5.QtWidgets import QWidget, QFormLayout, QHBoxLayout, QVBoxLayout
@@ -79,18 +78,11 @@ class ClientSettingDialog(QWidget):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
-        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.reso_height = self.resolution.height()
-        self.reso_width = self.resolution.width()
         self.init_ui()
 
     def init_ui(self):
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.setFixedSize(self.reso_width / 8, 0)
-        parent_geo = self.parent.geometry()
-        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
-                  parent_geo.y() + (parent_geo.height() - self.width()) / 2)
 
         self.settings.beginGroup('ClientSetting')
         self.Lserver_ip = QLabel('接收端IP')
@@ -160,6 +152,10 @@ class ClientSettingDialog(QWidget):
         vbox.addWidget(self.Gtrans)
         vbox.addLayout(hbox)
         self.setLayout(vbox)
+
+        self.setFixedSize(self.sizeHint())
+        self.move(self.parent.x() + (self.parent.width() - self.sizeHint().width()) / 2,
+                  self.parent.y() + (self.parent.height() - self.sizeHint().height()) / 2)
         self.setWindowTitle('发送端设置')
 
     def store(self):
@@ -190,24 +186,17 @@ class ClientSettingDialog(QWidget):
 
 
 class ServerSettingDialog(QWidget):
-    """服务端设置对话框(模态)"""
+    """接收端设置对话框(模态)"""
 
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
-        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.reso_height = self.resolution.height()
-        self.reso_width = self.resolution.width()
         self.init_ui()
 
     def init_ui(self):
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.setFixedSize(self.reso_width / 8, 0)
-        parent_geo = self.parent.geometry()
-        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
-                  parent_geo.y() + (parent_geo.height() - self.width()) / 2)
 
         self.settings.beginGroup('ServerSetting')
         self.Lincoming_ip = QLabel('呼入IP')
@@ -269,6 +258,10 @@ class ServerSettingDialog(QWidget):
         vbox.addWidget(self.Gtrans)
         vbox.addLayout(hbox)
         self.setLayout(vbox)
+
+        self.setFixedSize(self.sizeHint())
+        self.move(self.parent.x() + (self.parent.width() - self.sizeHint().width()) / 2,
+                  self.parent.y() + (self.parent.height() - self.sizeHint().height()) / 2)
         self.setWindowTitle('接收端设置')
 
     def store(self):
@@ -311,18 +304,11 @@ class UIDialog(QWidget):
         super().__init__()
         self.parent = parent
         self.settings = QSettings(os.path.join(os.path.abspath('.'), 'settings.ini'), QSettings.IniFormat)
-        self.resolution = QGuiApplication.primaryScreen().availableGeometry()
-        self.reso_height = self.resolution.height()
-        self.reso_width = self.resolution.width()
         self.init_ui()
 
     def init_ui(self):
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.setFixedSize(self.reso_width / 8, 0)
-        parent_geo = self.parent.geometry()
-        self.move(parent_geo.x() + (parent_geo.width() - self.width()) / 2,
-                  parent_geo.y() + (parent_geo.height() - self.width()) / 2)
 
         self.settings.beginGroup('UISetting')
         self.Lview = QLabel('启用详细视图(重启生效)')
@@ -357,6 +343,10 @@ class UIDialog(QWidget):
         hbox.addStretch(1)
         form.addRow(hbox)
         self.setLayout(form)
+
+        self.setFixedSize(self.sizeHint())
+        self.move(self.parent.x() + (self.parent.width() - self.sizeHint().width()) / 2,
+                  self.parent.y() + (self.parent.height() - self.sizeHint().height()) / 2)
         self.setWindowTitle('界面设置')
 
     def store(self):

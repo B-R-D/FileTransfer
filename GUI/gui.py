@@ -749,7 +749,7 @@ class ClientWindow(QMainWindow):
 if __name__ == '__main__':
     freeze_support()  # win平台打包支持
     if getattr(sys, 'frozen', False):  # 寻找程序运行目录
-        bundle_dir = sys._MEIPASS
+        bundle_dir = getattr(sys, '_MEIPASS', None)
     else:
         bundle_dir = os.path.dirname(os.path.abspath(__file__))
     app = QApplication(sys.argv)
