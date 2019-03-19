@@ -13,13 +13,15 @@ class ClientProtocol(asyncio.DatagramProtocol):
         self.que = que  # 服务端消息队列
         self.loop = loop
         self.transport = None
+        self.timer = None
         self.on_con_lost = loop.create_future()
         self.time_counter = self.loop.call_later(10, self.on_con_lost.set_result, True)
 
     def connection_made(self, transport):
-        """连接建立并发送消息。"""
+        """连接建立并发送消息，5s内消息未发送则归为发送失败。"""
         self.transport = transport
         cdata = json.dumps({'type': 'chat', 'message': self.message}).encode()
+        self.timer = self.loop.call_later(5, self.on_con_lost.set_result, True)
         self.chat_sender(cdata)
 
     def datagram_received(self, message, addr):
@@ -34,7 +36,6 @@ class ClientProtocol(asyncio.DatagramProtocol):
         self.que.put({'type': 'chat', 'status': 'failed'})
 
     def chat_sender(self, cdata):
-        """"""
         self.time_counter.cancel()
         self.transport.sendto(cdata)
         self.time_counter = self.loop.call_later(random.uniform(0.2, 0.5), self.chat_sender, cdata)
